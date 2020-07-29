@@ -18,6 +18,7 @@
 #include <string.h>
 #include <tools/perf/lib/libperf_int.h>
 #include <unistd.h>
+#include <ucs/sys/sock.h>
 
 #if _OPENMP
 #include <omp.h>
@@ -1546,9 +1547,13 @@ static ucs_status_t uct_perf_setup(ucx_perf_context_t *perf)
         .open_mode            = UCT_IFACE_OPEN_MODE_DEVICE,
         .mode.device.tl_name  = params->uct.tl_name,
         .mode.device.dev_name = params->uct.dev_name,
+        .mode.device.ifaddr   = params->uct.ifaddr,
+        .mode.device.netmask  = params->uct.netmask,
         .stats_root           = ucs_stats_get_root(),
         .rx_headroom          = 0
     };
+    char dest_str[UCS_SOCKADDR_STRING_LEN];
+    ucs_info("uct_perf_setup(dest_addr=%s)", ucs_sockaddr_str((const struct sockaddr *)(params->uct.ifaddr), dest_str, UCS_SOCKADDR_STRING_LEN));
     UCS_CPU_ZERO(&iface_params.cpu_mask);
 
     status = ucs_async_context_init(&perf->uct.async, params->async_mode);

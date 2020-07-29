@@ -174,6 +174,8 @@ void* test_perf::thread_func(void *arg)
 test_perf::test_result test_perf::run_multi_threaded(const test_spec &test, unsigned flags,
                                                      const std::string &tl_name,
                                                      const std::string &dev_name,
+                                                     const ucs::sock_addr_storage &ifaddr,
+                                                     const ucs::sock_addr_storage &netmask,
                                                      const std::vector<int> &cpus)
 {
     rte_comm c0to1, c1to0;
@@ -212,6 +214,9 @@ test_perf::test_result test_perf::run_multi_threaded(const test_spec &test, unsi
     params.iov_stride      = test.msg_stride;
     params.ucp.send_datatype = (ucp_perf_datatype_t)test.data_layout;
     params.ucp.recv_datatype = (ucp_perf_datatype_t)test.data_layout;
+
+    params.uct.ifaddr = (struct sockaddr_storage *)ifaddr.get_sock_addr_ptr();
+    params.uct.netmask = (struct sockaddr_storage *)netmask.get_sock_addr_ptr();
 
     thread_arg arg0;
     arg0.params   = params;
@@ -253,7 +258,8 @@ test_perf::test_result test_perf::run_multi_threaded(const test_spec &test, unsi
 }
 
 void test_perf::run_test(const test_spec& test, unsigned flags, bool check_perf,
-                         const std::string &tl_name, const std::string &dev_name)
+                         const std::string &tl_name, const std::string &dev_name,
+                         const ucs::sock_addr_storage &ifaddr, const ucs::sock_addr_storage &netmask)
 {
     std::vector<int> cpus = get_affinity();
     if (cpus.size() < 2) {
@@ -266,7 +272,7 @@ void test_perf::run_test(const test_spec& test, unsigned flags, bool check_perf,
                  (ucs::test_time_multiplier() == 1) &&
                  (ucs::perf_retry_count > 0);
     for (int i = 0; i < (ucs::perf_retry_count + 1); ++i) {
-        test_result result = run_multi_threaded(test, flags, tl_name, dev_name,
+        test_result result = run_multi_threaded(test, flags, tl_name, dev_name, ifaddr, netmask,
                                                 cpus);
         if ((result.status == UCS_ERR_UNSUPPORTED) ||
             (result.status == UCS_ERR_UNREACHABLE))

@@ -106,13 +106,13 @@ static inline void uct_tcp_ep_ctx_reset(uct_tcp_ep_ctx_t *ctx)
     uct_tcp_ep_ctx_rewind(ctx);
 }
 
-static void uct_tcp_ep_addr_cleanup(struct sockaddr_in *sock_addr)
+static void uct_tcp_ep_addr_cleanup(struct sockaddr_storage *sock_addr)
 {
     memset(sock_addr, 0, sizeof(*sock_addr));
 }
 
-static void uct_tcp_ep_addr_init(struct sockaddr_in *sock_addr,
-                                 const struct sockaddr_in *peer_addr)
+static void uct_tcp_ep_addr_init(struct sockaddr_storage *sock_addr,
+                                 const struct sockaddr_storage *peer_addr)
 {
     /* TODO: handle IPv4 and IPv6 */
     if (peer_addr == NULL) {
@@ -156,7 +156,7 @@ static void uct_tcp_ep_cleanup(uct_tcp_ep_t *ep)
 }
 
 static UCS_CLASS_INIT_FUNC(uct_tcp_ep_t, uct_tcp_iface_t *iface,
-                           int fd, const struct sockaddr_in *dest_addr)
+                           int fd, const struct sockaddr_storage *dest_addr)
 {
     ucs_status_t status;
 
@@ -316,7 +316,7 @@ UCS_CLASS_DEFINE(uct_tcp_ep_t, uct_base_ep_t);
 
 UCS_CLASS_DEFINE_NAMED_NEW_FUNC(uct_tcp_ep_init, uct_tcp_ep_t, uct_tcp_ep_t,
                                 uct_tcp_iface_t*, int,
-                                const struct sockaddr_in*)
+                                const struct sockaddr_storage*)
 UCS_CLASS_DEFINE_NAMED_DELETE_FUNC(uct_tcp_ep_destroy_internal,
                                    uct_tcp_ep_t, uct_ep_t)
 
@@ -349,7 +349,7 @@ void uct_tcp_ep_set_failed(uct_tcp_ep_t *ep)
 
 static ucs_status_t
 uct_tcp_ep_create_socket_and_connect(uct_tcp_iface_t *iface,
-                                     const struct sockaddr_in *dest_addr,
+                                     const struct sockaddr_storage *dest_addr,
                                      uct_tcp_ep_t **ep_p)
 {
     uct_tcp_ep_t *ep = NULL;
@@ -359,14 +359,19 @@ uct_tcp_ep_create_socket_and_connect(uct_tcp_iface_t *iface,
     /* if EP is already allocated, dest_addr can be NULL */
     ucs_assert((*ep_p != NULL) || (dest_addr != NULL));
 
-    status = ucs_socket_create(AF_INET, SOCK_STREAM, &fd);
+    status = ucs_socket_create(dest_addr->ss_family, SOCK_STREAM, &fd);
+    ucs_info("uct_tcp_ep_create_socket_and_connect: dest_addr family=%d", dest_addr->ss_family);
+    
     if (status != UCS_OK) {
+        ucs_error("uct_tcp_ep_create_socket_and_connect: error0");
         return status;
     }
 
     if (*ep_p == NULL) {
+        ucs_info("uct_tcp_ep_create_socket_and_connect: uct_tcp_ep_init");
         status = uct_tcp_ep_init(iface, fd, dest_addr, &ep);
         if (status != UCS_OK) {
+            ucs_error("uct_tcp_ep_create_socket_and_connect: error1");
             goto err_close_fd;
         }
 
@@ -376,7 +381,10 @@ uct_tcp_ep_create_socket_and_connect(uct_tcp_iface_t *iface,
         ep     = *ep_p;
         ep->fd = fd;
     }
-
+    ucs_info("uct_tcp_ep_create_socket_and_connect: dest_addr family=%d, ep family=%d", dest_addr->ss_family, ep->peer_addr.ss_family);
+    char dest_str[UCS_SOCKADDR_STRING_LEN];
+    ucs_info("uct_tcp_ep_create_socket_and_connect(dest_addr=%s)", ucs_sockaddr_str((const struct sockaddr *)dest_addr, dest_str, UCS_SOCKADDR_STRING_LEN));
+    ucs_info("uct_tcp_ep_create_socket_and_connect(peer_addr=%s)", ucs_sockaddr_str((const struct sockaddr *)(&ep->peer_addr), dest_str, UCS_SOCKADDR_STRING_LEN));
     status = uct_tcp_cm_conn_start(ep);
     if (status != UCS_OK) {
         goto err_ep_destroy;
@@ -401,7 +409,7 @@ err_close_fd:
 }
 
 static ucs_status_t uct_tcp_ep_create_connected(uct_tcp_iface_t *iface,
-                                                const struct sockaddr_in *dest_addr,
+                                                const struct sockaddr_storage *dest_addr,
                                                 uct_tcp_ep_t **ep_p)
 {
     ucs_status_t status;
@@ -428,16 +436,37 @@ ucs_status_t uct_tcp_ep_create(const uct_ep_params_t *params,
 {
     uct_tcp_iface_t *iface = ucs_derived_of(params->iface, uct_tcp_iface_t);
     uct_tcp_ep_t *ep       = NULL;
-    struct sockaddr_in dest_addr;
+    struct sockaddr_storage dest_addr;
     ucs_status_t status;
 
+    struct port_scope_id {
+        sa_family_t ss_family;
+        in_port_t   sin_port;
+        uint32_t    sin_scope_id;
+    };
+
+    char dest_str[UCS_SOCKADDR_STRING_LEN];
+    ucs_info("uct_tcp_ep_create(ifaddr=%s)", ucs_sockaddr_str((const struct sockaddr *)(&iface->config.ifaddr), dest_str, UCS_SOCKADDR_STRING_LEN));
+    ucs_info("uct_tcp_ep_create(if_name=%s)", iface->if_name);
     UCT_EP_PARAMS_CHECK_DEV_IFACE_ADDRS(params);
     memset(&dest_addr, 0, sizeof(dest_addr));
-    /* TODO: handle AF_INET6 */
-    dest_addr.sin_family = AF_INET;
-    dest_addr.sin_port   = *(in_port_t*)params->iface_addr;
-    dest_addr.sin_addr   = *(struct in_addr*)params->dev_addr;
 
+    if (((struct port_scope_id*)params->iface_addr)->ss_family == AF_INET) {
+        ((struct sockaddr_in *)(&dest_addr))->sin_family = AF_INET;
+        ((struct sockaddr_in *)(&dest_addr))->sin_port   = ((struct port_scope_id*)params->iface_addr)->sin_port;
+        ((struct sockaddr_in *)(&dest_addr))->sin_addr   = *(struct in_addr*)params->dev_addr;
+    } else if (((struct port_scope_id*)params->iface_addr)->ss_family == AF_INET6) {
+        ((struct sockaddr_in6 *)(&dest_addr))->sin6_family   = AF_INET6;
+        ((struct sockaddr_in6 *)(&dest_addr))->sin6_port     = ((struct port_scope_id*)params->iface_addr)->sin_port;//Can be all put into params->sockaddr
+        ((struct sockaddr_in6 *)(&dest_addr))->sin6_addr     = *(struct in6_addr*)params->dev_addr;//Can be all put into params->sockaddr
+        ((struct sockaddr_in6 *)(&dest_addr))->sin6_scope_id = ((struct port_scope_id*)params->iface_addr)->sin_scope_id;//Can be all put into params->sockaddr
+        ucs_info("leibin dest_addr sin6_scope_id: %d", ((struct sockaddr_in6 *)(&dest_addr))->sin6_scope_id);
+    } else {
+        ucs_error("tcp_ep: unknown iface family=%d", iface->config.ifaddr.ss_family);
+        return UCS_ERR_IO_ERROR;
+    }
+    
+    ucs_info("uct_tcp_ep_create(dest_addr=%s)", ucs_sockaddr_str((const struct sockaddr *)(&dest_addr), dest_str, UCS_SOCKADDR_STRING_LEN));
     do {
         ep = uct_tcp_cm_search_ep(iface, &dest_addr,
                                   UCT_TCP_EP_CTX_TYPE_RX);
@@ -468,6 +497,7 @@ ucs_status_t uct_tcp_ep_create(const uct_ep_params_t *params,
         /* cppcheck-suppress autoVariables */
         *ep_p = &ep->super.super;
     }
+
     return status;
 }
 

@@ -318,6 +318,8 @@ typedef enum {
 typedef struct uct_tl_resource_desc {
     char                     tl_name[UCT_TL_NAME_MAX];   /**< Transport name */
     char                     dev_name[UCT_DEVICE_NAME_MAX]; /**< Hardware device name */
+    struct sockaddr_storage  ifaddr;
+    struct sockaddr_storage  netmask;
     uct_device_type_t        dev_type;     /**< The device represented by this resource
                                                 (e.g. UCT_DEVICE_TYPE_NET for a network interface) */
     ucs_sys_device_t         sys_device;   /**< The identifier associated with the device
@@ -991,6 +993,8 @@ struct uct_iface_params {
         struct {
             const char                           *tl_name;  /**< Transport name */
             const char                           *dev_name; /**< Device Name */
+            struct sockaddr_storage              *ifaddr;
+            struct sockaddr_storage              *netmask;
         } device;
         /** @anchor uct_iface_params_t_mode_sockaddr
          *  These callbacks and address are only relevant for client-server

@@ -255,6 +255,8 @@ UCS_CLASS_DECLARE(uct_base_ep_t, uct_base_iface_t*);
  */
 typedef struct uct_tl_device_resource {
     char                     name[UCT_DEVICE_NAME_MAX]; /**< Hardware device name */
+    struct sockaddr_storage  ifaddr;
+    struct sockaddr_storage  netmask;
     uct_device_type_t        type;       /**< The device represented by this resource
                                               (e.g. UCT_DEVICE_TYPE_NET for a network interface) */
     ucs_sys_device_t         sys_device; /**< The identifier associated with the device

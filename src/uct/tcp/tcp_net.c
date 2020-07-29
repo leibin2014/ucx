@@ -105,8 +105,8 @@ ucs_status_t uct_tcp_netif_caps(const char *if_name, double *latency_p,
     return UCS_OK;
 }
 
-ucs_status_t uct_tcp_netif_inaddr(const char *if_name, struct sockaddr_in *ifaddr,
-                                  struct sockaddr_in *netmask)
+ucs_status_t uct_tcp_netif_inaddr(const char *if_name, struct sockaddr_storage *ifaddr,
+                                  struct sockaddr_storage *netmask)
 {
     ucs_status_t status;
     struct ifreq ifra, ifrnm;
@@ -128,9 +128,9 @@ ucs_status_t uct_tcp_netif_inaddr(const char *if_name, struct sockaddr_in *ifadd
         return UCS_ERR_INVALID_ADDR;
     }
 
-    memcpy(ifaddr,  (struct sockaddr_in*)&ifra.ifr_addr,  sizeof(*ifaddr));
+    memcpy(ifaddr,  (struct sockaddr_storage*)&ifra.ifr_addr,  sizeof(*ifaddr));
     if (netmask != NULL) {
-        memcpy(netmask, (struct sockaddr_in*)&ifrnm.ifr_addr, sizeof(*netmask));
+        memcpy(netmask, (struct sockaddr_storage*)&ifrnm.ifr_addr, sizeof(*netmask));
     }
 
     return UCS_OK;

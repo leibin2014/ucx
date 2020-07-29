@@ -1062,11 +1062,15 @@ static ucs_status_t ucp_worker_add_resource_ifaces(ucp_worker_h worker)
 
         if (resource->flags & UCP_TL_RSC_FLAG_SOCKADDR) {
             iface_params.open_mode            = UCT_IFACE_OPEN_MODE_SOCKADDR_CLIENT;
+            ucs_info("%s family3: %d", resource->tl_rsc.tl_name, resource->tl_rsc.ifaddr.ss_family);
         } else {
             iface_params.open_mode            = UCT_IFACE_OPEN_MODE_DEVICE;
             iface_params.field_mask          |= UCT_IFACE_PARAM_FIELD_DEVICE;
             iface_params.mode.device.tl_name  = resource->tl_rsc.tl_name;
             iface_params.mode.device.dev_name = resource->tl_rsc.dev_name;
+            iface_params.mode.device.ifaddr   = &resource->tl_rsc.ifaddr;
+            iface_params.mode.device.netmask  = &resource->tl_rsc.netmask;
+            ucs_info("%s family3: %d", resource->tl_rsc.tl_name, resource->tl_rsc.ifaddr.ss_family);
         }
 
         status = ucp_worker_iface_open(worker, tl_id, &iface_params,

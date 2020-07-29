@@ -22,7 +22,7 @@ public:
 
         mm_resource(const resource& res, const std::string& shm_dir = "") :
             resource(res.component, res.md_name, res.local_cpus, res.tl_name,
-                     res.dev_name, res.dev_type),
+                     res.dev_name, res.ifaddr, res.netmask, res.dev_type),
             shm_dir(shm_dir)
         {
         }

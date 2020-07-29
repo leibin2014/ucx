@@ -71,6 +71,7 @@ ucs_status_t ucs_netif_ioctl(const char *if_name, unsigned long request,
 
     ret = ioctl(fd, request, if_req);
     if (ret < 0) {
+        ucs_log_print_backtrace(UCS_LOG_LEVEL_INFO);
         ucs_debug("ioctl(req=%lu, ifr_name=%s) failed: %m", request, if_name);
         status = UCS_ERR_IO_ERROR;
         goto out_close_fd;
@@ -82,24 +83,6 @@ out_close_fd:
     ucs_close_fd(&fd);
 out:
     return status;
-}
-
-int ucs_netif_is_active(const char *if_name)
-{
-    ucs_status_t status;
-    struct ifreq ifr;
-
-    status = ucs_netif_ioctl(if_name, SIOCGIFADDR, &ifr);
-    if (status != UCS_OK) {
-        return 0;
-    }
-
-    status = ucs_netif_ioctl(if_name, SIOCGIFFLAGS, &ifr);
-    if (status != UCS_OK) {
-        return 0;
-    }
-
-    return ucs_netif_flags_is_active(ifr.ifr_flags);
 }
 
 unsigned ucs_netif_bond_ad_num_ports(const char *bond_name)
@@ -123,6 +106,8 @@ ucs_status_t ucs_socket_create(int domain, int type, int *fd_p)
 {
     int fd = socket(domain, type, 0);
     if (fd < 0) {
+        ucs_log_print_backtrace(UCS_LOG_LEVEL_INFO);
+        ucs_info("leibin ucs_socket_create family: %d", domain);
         ucs_error("socket create failed: %m");
         return UCS_ERR_IO_ERROR;
     }
@@ -239,6 +224,9 @@ ucs_status_t ucs_socket_connect(int fd, const struct sockaddr *dest_addr)
             }
 
             if (errno != EINTR) {
+                ucs_error("ucs_socket_connect: family %d", dest_addr->sa_family);
+                if (dest_addr->sa_family == AF_INET6)
+                    ucs_error("ucs_socket_connect: sin6_scope_id %d", ((struct sockaddr_in6 *)dest_addr)->sin6_scope_id);
                 ucs_error("connect(fd=%d, dest_addr=%s) failed: %m", fd,
                           ucs_sockaddr_str(dest_addr, dest_str,
                                            UCS_SOCKADDR_STRING_LEN));

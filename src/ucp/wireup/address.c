@@ -601,7 +601,7 @@ static ucs_status_t ucp_address_do_pack(ucp_worker_h worker, ucp_ep_h ep,
     int attr_len;
     void *ptr;
     int enable_amo;
-
+    ucs_info("ucp_address_do_pack %d", num_devices);
     ptr               = buffer;
     addr_index        = 0;
     address_header_p  = ptr;

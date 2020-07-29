@@ -41,6 +41,16 @@ resource::resource(uct_component_h component, const std::string& md_name,
 {
 }
 
+resource::resource(uct_component_h component, const std::string& md_name,
+                   const ucs_cpu_set_t& local_cpus, const std::string& tl_name,
+                   const std::string& dev_name, const ucs::sock_addr_storage& ifaddr,
+                   const ucs::sock_addr_storage& netmask, uct_device_type_t dev_type) :
+                   component(component), md_name(md_name), local_cpus(local_cpus),
+                   tl_name(tl_name), dev_name(dev_name), variant_name(""), ifaddr(ifaddr),
+                   netmask(netmask), dev_type(dev_type), variant(DEFAULT_VARIANT)
+{
+}
+
 resource::resource(uct_component_h component, const uct_md_attr_t& md_attr,
                    const uct_md_resource_desc_t& md_resource,
                    const uct_tl_resource_desc_t& tl_resource) :
@@ -53,6 +63,18 @@ resource::resource(uct_component_h component, const uct_md_attr_t& md_attr,
                    dev_type(tl_resource.dev_type),
                    variant(DEFAULT_VARIANT)
 {
+    if (tl_resource.ifaddr.ss_family == AF_INET) {
+        ifaddr.set_sock_addr(*((struct sockaddr *)&tl_resource.ifaddr), sizeof(struct sockaddr_in));
+        netmask.set_sock_addr(*((struct sockaddr *)&tl_resource.netmask), sizeof(struct sockaddr_in));
+    } else if (tl_resource.ifaddr.ss_family == AF_INET6) {
+        ifaddr.set_sock_addr(*((struct sockaddr *)&tl_resource.ifaddr), sizeof(struct sockaddr_in6));
+        netmask.set_sock_addr(*((struct sockaddr *)&tl_resource.netmask), sizeof(struct sockaddr_in6));
+    } else {
+    //some inferfaces like "memory" without addr
+    //ucs_log_print_backtrace(UCS_LOG_LEVEL_INFO);
+    //    UCS_TEST_ABORT("Unknown sa_family " << tl_resource.ifaddr.ss_family);
+        
+    }
 }
 
 resource_speed::resource_speed(uct_component_h component, const uct_worker_h& worker,
@@ -76,6 +98,8 @@ resource_speed::resource_speed(uct_component_h component, const uct_worker_h& wo
     iface_params.open_mode            = UCT_IFACE_OPEN_MODE_DEVICE;
     iface_params.mode.device.tl_name  = tl_name.c_str();
     iface_params.mode.device.dev_name = dev_name.c_str();
+    iface_params.mode.device.ifaddr   = (struct sockaddr_storage*)ifaddr.get_sock_addr_ptr();
+    iface_params.mode.device.netmask  = (struct sockaddr_storage*)netmask.get_sock_addr_ptr();
 
     status = uct_iface_open(md, worker, &iface_params, iface_config, &iface);
     ASSERT_UCS_OK(status);
@@ -194,9 +218,13 @@ uct_test::~uct_test() {
     uct_config_release(m_md_config);
 }
 
-void uct_test::init_sockaddr_rsc(resource *rsc, struct sockaddr *listen_addr,
+void uct_test::init_sockaddr_rsc(resource *rsc, struct sockaddr *ifaddr,
+                                 struct sockaddr *netmask, struct sockaddr *listen_addr,
                                  struct sockaddr *connect_addr, size_t size)
 {
+    ucs_info("init_sockaddr_rsc");
+    rsc->ifaddr.set_sock_addr(*ifaddr, size);
+    rsc->netmask.set_sock_addr(*netmask, size);
     rsc->listen_sock_addr.set_sock_addr(*listen_addr, size);
     rsc->connect_sock_addr.set_sock_addr(*connect_addr, size);
 }
@@ -216,10 +244,12 @@ void uct_test::set_interface_rscs(uct_component_h cmpt, const char *name,
         if (i == 0) {
             /* first rsc */
             if (ifa->ifa_addr->sa_family == AF_INET) {
-                uct_test::init_sockaddr_rsc(&rsc, ifa->ifa_addr, ifa->ifa_addr,
+                uct_test::init_sockaddr_rsc(&rsc, ifa->ifa_addr, ifa->ifa_netmask,
+                                            ifa->ifa_addr, ifa->ifa_addr,
                                             sizeof(struct sockaddr_in));
             } else if (ifa->ifa_addr->sa_family == AF_INET6) {
-                uct_test::init_sockaddr_rsc(&rsc, ifa->ifa_addr, ifa->ifa_addr,
+                uct_test::init_sockaddr_rsc(&rsc, ifa->ifa_addr, ifa->ifa_netmask,
+                                            ifa->ifa_addr, ifa->ifa_addr,
                                             sizeof(struct sockaddr_in6));
             } else {
                 UCS_TEST_ABORT("Unknown sa_family " << ifa->ifa_addr->sa_family);
@@ -232,15 +262,17 @@ void uct_test::set_interface_rscs(uct_component_h cmpt, const char *name,
                 memset(&sin, 0, sizeof(struct sockaddr_in));
                 sin.sin_family      = AF_INET;
                 sin.sin_addr.s_addr = INADDR_ANY;
-                uct_test::init_sockaddr_rsc(&rsc, (struct sockaddr*)&sin,
-                                            ifa->ifa_addr, sizeof(struct sockaddr_in));
+                uct_test::init_sockaddr_rsc(&rsc, ifa->ifa_addr, ifa->ifa_netmask,
+                                            (struct sockaddr*)&sin, ifa->ifa_addr,
+                                            sizeof(struct sockaddr_in));
             } else if (ifa->ifa_addr->sa_family == AF_INET6) {
                 struct sockaddr_in6 sin;
                 memset(&sin, 0, sizeof(struct sockaddr_in6));
                 sin.sin6_family     = AF_INET6;
                 sin.sin6_addr       = in6addr_any;
-                uct_test::init_sockaddr_rsc(&rsc, (struct sockaddr*)&sin,
-                                            ifa->ifa_addr, sizeof(struct sockaddr_in6));
+                uct_test::init_sockaddr_rsc(&rsc, ifa->ifa_addr, ifa->ifa_netmask,
+                                            (struct sockaddr*)&sin, ifa->ifa_addr,
+                                            sizeof(struct sockaddr_in6));
             } else {
                 UCS_TEST_ABORT("Unknown sa_family " << ifa->ifa_addr->sa_family);
             }
@@ -343,7 +375,7 @@ std::vector<const resource*> uct_test::enum_resources(const std::string& tl_name
 {
     static bool tcp_fastest_dev = (getenv("GTEST_UCT_TCP_FASTEST_DEV") != NULL);
     static std::vector<resource> all_resources;
-
+    ucs_info("enum_resources");
     if (all_resources.empty()) {
         ucs_async_context_t *async;
         uct_worker_h worker;
@@ -356,7 +388,7 @@ std::vector<const resource*> uct_test::enum_resources(const std::string& tl_name
         ASSERT_UCS_OK(status);
 
         std::vector<md_resource> md_resources = enum_md_resources();
-
+        ucs_info("enum_resources1");
         for (std::vector<md_resource>::iterator iter = md_resources.begin();
              iter != md_resources.end(); ++iter) {
             uct_md_h md;
@@ -405,6 +437,7 @@ std::vector<const resource*> uct_test::enum_resources(const std::string& tl_name
 
             if ((md_attr.cap.flags & UCT_MD_FLAG_SOCKADDR) &&
                 !(iter->cmpt_attr.flags & UCT_COMPONENT_FLAG_CM)) {
+                ucs_info("set_md_sockaddr_resources");
                 uct_test::set_md_sockaddr_resources(*iter, md, md_attr.local_cpus,
                                                     all_resources);
             }
@@ -415,10 +448,13 @@ std::vector<const resource*> uct_test::enum_resources(const std::string& tl_name
 
         uct_worker_destroy(worker);
         ucs_async_context_destroy(async);
-
+        ucs_info("set_cm_resources");
         set_cm_resources(all_resources);
     }
-
+/*    for(size_t i = 0; i < all_resources.size(); ++i) {
+        ucs_info("uct_test dev name: %s", all_resources[i].dev_name.c_str());
+        ucs_info("uct_test ifaddr: %p", (all_resources[i].ifaddr).get_sock_addr_ptr());
+    }*/
     return filter_resources(all_resources, tl_name);
 }
 
@@ -733,18 +769,46 @@ void uct_test::reduce_tl_send_queues()
     set_config("RCVBUF?=128");
 }
 
-uct_test::entity::entity(const resource& resource, uct_iface_config_t *iface_config,
+uct_test::entity::entity(const resource& resource_o, uct_iface_config_t *iface_config,
                          uct_iface_params_t *params, uct_md_config_t *md_config) :
-    m_resource(resource)
+    m_resource(resource_o)
 {
+#if 0
     ucs_status_t status;
-
+    ucs_info("uct_test tl_name: %s", resource_o.tl_name.c_str());
+    ucs_info("uct_test dev_name: %s", resource_o.dev_name.c_str());
+    std::vector<const resource*> rsc= enum_resources(resource_o.tl_name);
+    const resource* rsc_if = rsc.front();
+/*    for(size_t i = 0; i < rsc.size(); ++i) {
+        ucs_info("uct_test tl name: %s", rsc[i]->tl_name.c_str());
+        ucs_info("uct_test dev name: %s", rsc[i]->dev_name.c_str());
+        ucs_info("uct_test ifaddr: %p", (rsc[i]->ifaddr).get_sock_addr_ptr());
+    }
+*/
     if (params->open_mode == UCT_IFACE_OPEN_MODE_DEVICE) {
         params->field_mask          |= UCT_IFACE_PARAM_FIELD_DEVICE;
-        params->mode.device.tl_name  = resource.tl_name.c_str();
-        params->mode.device.dev_name = resource.dev_name.c_str();
+        params->mode.device.tl_name  = resource_o.tl_name.c_str();
+        params->mode.device.dev_name = resource_o.dev_name.c_str();
+        params->mode.device.ifaddr   = (struct sockaddr_storage*)((rsc_if->ifaddr).get_sock_addr_ptr());
+        params->mode.device.netmask  = (struct sockaddr_storage*)((rsc_if->netmask).get_sock_addr_ptr());
     }
+    //ucs_info("uct_test dev name: %s", rsc_if->dev_name.c_str()); 
+    //ucs_info("uct_test ifaddr: %p", (rsc_if->ifaddr).get_sock_addr_ptr()); 
+    //ucs_info("uct_test netmask: %p", (rsc_if->netmask).get_sock_addr_ptr());
+#else
+    ucs_status_t status;
+    if (params->open_mode == UCT_IFACE_OPEN_MODE_DEVICE) {
+        params->field_mask          |= UCT_IFACE_PARAM_FIELD_DEVICE;
+        params->mode.device.tl_name  = resource_o.tl_name.c_str();
+        params->mode.device.dev_name = resource_o.dev_name.c_str();
+        params->mode.device.ifaddr   = (struct sockaddr_storage*)((resource_o.ifaddr).get_sock_addr_ptr());
+        params->mode.device.netmask  = (struct sockaddr_storage*)((resource_o.netmask).get_sock_addr_ptr());
+    }
+    ucs_info("uct_test dev name: %s", resource_o.dev_name.c_str()); 
+    ucs_info("uct_test ifaddr: %p", (resource_o.ifaddr).get_sock_addr_ptr()); 
+    //ucs_info("uct_test netmask: %p", (rsc_if->netmask).get_sock_addr_ptr());
 
+#endif
     params->field_mask |= UCT_IFACE_PARAM_FIELD_STATS_ROOT |
                           UCT_IFACE_PARAM_FIELD_CPU_MASK;
     params->stats_root  = ucs_stats_get_root();
@@ -755,7 +819,7 @@ uct_test::entity::entity(const resource& resource, uct_iface_config_t *iface_con
                            UCS_THREAD_MODE_SINGLE);
 
     UCS_TEST_CREATE_HANDLE(uct_md_h, m_md, uct_md_close, uct_md_open,
-                           resource.component, resource.md_name.c_str(),
+                           resource_o.component, resource_o.md_name.c_str(),
                            md_config);
 
     status = uct_md_query(m_md, &m_md_attr);

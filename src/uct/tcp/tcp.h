@@ -124,8 +124,8 @@ typedef struct uct_tcp_ep uct_tcp_ep_t;
 
 typedef unsigned (*uct_tcp_ep_progress_t)(uct_tcp_ep_t *ep);
 
-static inline int uct_tcp_khash_sockaddr_in_equal(struct sockaddr_in sa1,
-                                                  struct sockaddr_in sa2)
+static inline int uct_tcp_khash_sockaddr_in_equal(struct sockaddr_storage sa1,
+                                                  struct sockaddr_storage sa2)
 {
     ucs_status_t status;
     int cmp;
@@ -137,7 +137,7 @@ static inline int uct_tcp_khash_sockaddr_in_equal(struct sockaddr_in sa1,
     return !cmp;
 }
 
-static inline uint32_t uct_tcp_khash_sockaddr_in_hash(struct sockaddr_in sa)
+static inline uint32_t uct_tcp_khash_sockaddr_in_hash(struct sockaddr_storage sa)
 {
     ucs_status_t UCS_V_UNUSED status;
     size_t addr_size;
@@ -148,7 +148,7 @@ static inline uint32_t uct_tcp_khash_sockaddr_in_hash(struct sockaddr_in sa)
     return ucs_crc32(0, (const void *)&sa, addr_size);
 }
 
-KHASH_INIT(uct_tcp_cm_eps, struct sockaddr_in, ucs_list_link_t*,
+KHASH_INIT(uct_tcp_cm_eps, struct sockaddr_storage, ucs_list_link_t*,
            1, uct_tcp_khash_sockaddr_in_hash, uct_tcp_khash_sockaddr_in_equal);
 
 
@@ -198,7 +198,7 @@ typedef enum uct_tcp_cm_conn_event {
  */
 typedef struct uct_tcp_cm_conn_req_pkt {
     uct_tcp_cm_conn_event_t       event;      /* Connection event ID */
-    struct sockaddr_in            iface_addr; /* Socket address of UCT local iface */
+    struct sockaddr_storage       iface_addr; /* Socket address of UCT local iface */
 } UCS_S_PACKED uct_tcp_cm_conn_req_pkt_t;
 
 
@@ -294,7 +294,7 @@ struct uct_tcp_ep {
     int                           events;           /* Current notifications */
     uct_tcp_ep_ctx_t              tx;               /* TX resources */
     uct_tcp_ep_ctx_t              rx;               /* RX resources */
-    struct sockaddr_in            peer_addr;        /* Remote iface addr */
+    struct sockaddr_storage       peer_addr;        /* Remote iface addr */
     ucs_queue_head_t              pending_q;        /* Pending operations */
     ucs_queue_head_t              put_comp_q;       /* Flush completions waiting for
                                                      * outstanding PUTs acknowledgment */
@@ -334,8 +334,8 @@ typedef struct uct_tcp_iface {
             size_t                hdr_offset;        /* Offset in TX buffer to empty space that
                                                       * can be used for AM Zcopy header */
         } zcopy;
-        struct sockaddr_in        ifaddr;            /* Network address */
-        struct sockaddr_in        netmask;           /* Network address mask */
+        struct sockaddr_storage   ifaddr;            /* Network address */
+        struct sockaddr_storage   netmask;           /* Network address mask */
         int                       prefer_default;    /* Prefer default gateway */
         int                       put_enable;        /* Enable PUT Zcopy operation support */
         int                       conn_nb;           /* Use non-blocking connect() */
@@ -386,8 +386,8 @@ extern const uct_tcp_ep_progress_t uct_tcp_ep_progress_rx_cb[];
 ucs_status_t uct_tcp_netif_caps(const char *if_name, double *latency_p,
                                 double *bandwidth_p);
 
-ucs_status_t uct_tcp_netif_inaddr(const char *if_name, struct sockaddr_in *ifaddr,
-                                  struct sockaddr_in *netmask);
+ucs_status_t uct_tcp_netif_inaddr(const char *if_name, struct sockaddr_storage *ifaddr,
+                                  struct sockaddr_storage *netmask);
 
 ucs_status_t uct_tcp_netif_is_default(const char *if_name, int *result_p);
 
@@ -408,7 +408,7 @@ ucs_status_t uct_tcp_ep_handle_dropped_connect(uct_tcp_ep_t *ep,
                                                ucs_status_t io_status);
 
 ucs_status_t uct_tcp_ep_init(uct_tcp_iface_t *iface, int fd,
-                             const struct sockaddr_in *dest_addr,
+                             const struct sockaddr_storage *dest_addr,
                              uct_tcp_ep_t **ep_p);
 
 ucs_status_t uct_tcp_ep_create(const uct_ep_params_t *params,
@@ -486,13 +486,13 @@ ucs_status_t uct_tcp_cm_add_ep(uct_tcp_iface_t *iface, uct_tcp_ep_t *ep);
 void uct_tcp_cm_remove_ep(uct_tcp_iface_t *iface, uct_tcp_ep_t *ep);
 
 uct_tcp_ep_t *uct_tcp_cm_search_ep(uct_tcp_iface_t *iface,
-                                   const struct sockaddr_in *peer_addr,
+                                   const struct sockaddr_storage *peer_addr,
                                    uct_tcp_ep_ctx_type_t with_ctx_type);
 
 void uct_tcp_cm_purge_ep(uct_tcp_ep_t *ep);
 
 ucs_status_t uct_tcp_cm_handle_incoming_conn(uct_tcp_iface_t *iface,
-                                             const struct sockaddr_in *peer_addr,
+                                             const struct sockaddr_storage *peer_addr,
                                              int fd);
 
 ucs_status_t uct_tcp_cm_conn_start(uct_tcp_ep_t *ep);

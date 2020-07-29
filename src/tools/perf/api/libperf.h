@@ -200,11 +200,13 @@ typedef struct ucx_perf_params {
     void                   *report_arg;     /* Custom argument for report function */
 
     struct {
-        char                   dev_name[UCT_DEVICE_NAME_MAX]; /* Device name to use */
-        char                   tl_name[UCT_TL_NAME_MAX];      /* Transport to use */
-        char                   md_name[UCT_MD_NAME_MAX];      /* Memory domain name to use */
-        uct_perf_data_layout_t data_layout; /* Data layout to use */
-        unsigned               fc_window;   /* Window size for flow control <= UCX_PERF_TEST_MAX_FC_WINDOW */
+        char                    dev_name[UCT_DEVICE_NAME_MAX]; /* Device name to use */
+        char                    tl_name[UCT_TL_NAME_MAX];      /* Transport to use */
+        struct sockaddr_storage *ifaddr;
+        struct sockaddr_storage *netmask;
+        char                    md_name[UCT_MD_NAME_MAX];      /* Memory domain name to use */
+        uct_perf_data_layout_t  data_layout; /* Data layout to use */
+        unsigned                fc_window;   /* Window size for flow control <= UCX_PERF_TEST_MAX_FC_WINDOW */
     } uct;
 
     struct {

@@ -175,13 +175,27 @@ private:
         status = uct_iface_get_address(to.iface(), iface_addr);
         ASSERT_UCS_OK(status);
 
-        struct sockaddr_in dest_addr;
-        dest_addr.sin_family = AF_INET;
-        dest_addr.sin_port   = *(in_port_t*)iface_addr;
-        dest_addr.sin_addr   = *(struct in_addr*)dev_addr;
+        struct port_scope_id {
+            sa_family_t ss_family;
+            in_port_t   sin_port;
+            uint32_t    sin_scope_id;
+        };
+
+
+        struct sockaddr dest_addr;
+        if (((struct port_scope_id*)iface_addr)->ss_family == AF_INET) {
+            ((struct sockaddr_in *)(&dest_addr))->sin_family = AF_INET;
+            ((struct sockaddr_in *)(&dest_addr))->sin_port = ((struct port_scope_id*)iface_addr)->sin_port;
+            ((struct sockaddr_in *)(&dest_addr))->sin_addr = *(struct in_addr*)dev_addr;
+        } else {
+            ((struct sockaddr_in6 *)(&dest_addr))->sin6_family = AF_INET6;
+            ((struct sockaddr_in6 *)(&dest_addr))->sin6_port = ((struct port_scope_id*)iface_addr)->sin_port;
+            ((struct sockaddr_in6 *)(&dest_addr))->sin6_addr = *(struct in6_addr*)dev_addr;
+            ((struct sockaddr_in6 *)(&dest_addr))->sin6_scope_id = ((struct port_scope_id*)iface_addr)->sin_scope_id;;
+        }
 
         int fd;
-        status = ucs_socket_create(AF_INET, SOCK_STREAM, &fd);
+        status = ucs_socket_create(dest_addr.sa_family, SOCK_STREAM, &fd);
         ASSERT_UCS_OK(status);
 
         status = ucs_socket_connect(fd, (const struct sockaddr*)&dest_addr);

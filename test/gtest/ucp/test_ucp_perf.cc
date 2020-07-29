@@ -190,7 +190,9 @@ UCS_TEST_P(test_ucp_perf, envelope) {
             test.min /= UCP_ARM_PERF_TEST_MULTIPLIER;
         }
         test.iters = ucs_min(test.iters, max_iter);
-        run_test(test, 0, check_perf, "", "");
+        ucs::sock_addr_storage ifaddr;
+        ucs::sock_addr_storage netmask;        
+        run_test(test, 0, check_perf, "", "", ifaddr, netmask);
     }
 }
 

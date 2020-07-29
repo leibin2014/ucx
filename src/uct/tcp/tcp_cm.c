@@ -268,7 +268,7 @@ void uct_tcp_cm_remove_ep(uct_tcp_iface_t *iface, uct_tcp_ep_t *ep)
 }
 
 uct_tcp_ep_t *uct_tcp_cm_search_ep(uct_tcp_iface_t *iface,
-                                   const struct sockaddr_in *peer_addr,
+                                   const struct sockaddr_storage *peer_addr,
                                    uct_tcp_ep_ctx_type_t with_ctx_type)
 {
     uct_tcp_ep_t *ep;
@@ -592,7 +592,7 @@ ucs_status_t uct_tcp_cm_conn_start(uct_tcp_ep_t *ep)
 
 /* This function is called from async thread */
 ucs_status_t uct_tcp_cm_handle_incoming_conn(uct_tcp_iface_t *iface,
-                                             const struct sockaddr_in *peer_addr,
+                                             const struct sockaddr_storage *peer_addr,
                                              int fd)
 {
     char str_local_addr[UCS_SOCKADDR_STRING_LEN];

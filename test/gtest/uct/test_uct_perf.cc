@@ -173,7 +173,7 @@ UCS_TEST_P(test_uct_perf, envelope) {
             test.min /= UCT_PERF_TEST_MULTIPLIER;
         }
         test.iters = ucs_min(test.iters, max_iter);
-        run_test(test, 0, check_perf, GetParam()->tl_name, GetParam()->dev_name);
+        run_test(test, 0, check_perf, GetParam()->tl_name, GetParam()->dev_name, GetParam()->ifaddr, GetParam()->netmask);
     }
 }
 

@@ -128,6 +128,8 @@ static void print_iface_info(uct_worker_h worker, uct_md_h md,
         .open_mode             = UCT_IFACE_OPEN_MODE_DEVICE,
         .mode.device.tl_name   = resource->tl_name,
         .mode.device.dev_name  = resource->dev_name,
+        .mode.device.ifaddr    = &resource->ifaddr,
+        .mode.device.netmask   = &resource->netmask,
         .stats_root            = ucs_stats_get_root(),
         .rx_headroom           = 0
     };

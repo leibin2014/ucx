@@ -9,6 +9,7 @@
 #endif
 
 #include "tcp.h"
+#include <ifaddrs.h>
 
 #include <ucs/async/async.h>
 #include <ucs/sys/string.h>
@@ -90,16 +91,55 @@ static ucs_status_t uct_tcp_iface_get_device_address(uct_iface_h tl_iface,
                                                      uct_device_addr_t *addr)
 {
     uct_tcp_iface_t *iface = ucs_derived_of(tl_iface, uct_tcp_iface_t);
+    ucs_info("uct_tcp_iface_get_device_address family %d", iface->config.ifaddr.ss_family);
+    char dest_str[UCS_SOCKADDR_STRING_LEN];
 
-    *(struct in_addr*)addr = iface->config.ifaddr.sin_addr;
+    if (iface->config.ifaddr.ss_family == AF_INET) {
+        *(struct in_addr*)addr = ((struct sockaddr_in *)(&iface->config.ifaddr))->sin_addr;
+
+    } else if (iface->config.ifaddr.ss_family == AF_INET6) {
+        *(struct in6_addr*)addr = ((struct sockaddr_in6 *)(&iface->config.ifaddr))->sin6_addr;
+    } else {
+        ucs_error("tcp_iface: unknown iface family=%d", iface->config.ifaddr.ss_family);
+        return UCS_ERR_IO_ERROR;
+    }
+    
+    ucs_info("uct_tcp_iface_get_device_address(dest_addr=%s)",
+                      ucs_sockaddr_str((const struct sockaddr *)(&iface->config.ifaddr), dest_str,
+                                       UCS_SOCKADDR_STRING_LEN));
+
     return UCS_OK;
 }
+
+
 
 static ucs_status_t uct_tcp_iface_get_address(uct_iface_h tl_iface, uct_iface_addr_t *addr)
 {
     uct_tcp_iface_t *iface = ucs_derived_of(tl_iface, uct_tcp_iface_t);
 
-    *(in_port_t*)addr = iface->config.ifaddr.sin_port;
+    struct port_scope_id {
+        sa_family_t ss_family;
+        in_port_t   sin_port;
+        uint32_t    sin_scope_id;
+    };
+    char dest_str[UCS_SOCKADDR_STRING_LEN];
+        ucs_info("uct_tcp_iface_get_address(dest_addr=%s)",
+                      ucs_sockaddr_str((const struct sockaddr *)(&iface->config.ifaddr), dest_str,
+                                       UCS_SOCKADDR_STRING_LEN));
+    
+    ucs_info("uct_tcp_iface_get_address family %d", iface->config.ifaddr.ss_family);
+    if (iface->config.ifaddr.ss_family == AF_INET) {
+        ((struct port_scope_id*)addr)->ss_family    = AF_INET;
+        ((struct port_scope_id*)addr)->sin_port     = ((struct sockaddr_in *)(&iface->config.ifaddr))->sin_port;
+    } else if (iface->config.ifaddr.ss_family == AF_INET6) {
+        ((struct port_scope_id*)addr)->ss_family    = AF_INET6;
+        ((struct port_scope_id*)addr)->sin_port     = ((struct sockaddr_in6 *)(&iface->config.ifaddr))->sin6_port;
+        ((struct port_scope_id*)addr)->sin_scope_id = ((struct sockaddr_in6 *)(&iface->config.ifaddr))->sin6_scope_id;
+        //ucs_info("uct_tcp_iface_get_address sin6_scope_id: %d", ((struct port_scope_id*)addr)->sin_scope_id);
+    } else {
+        ucs_error("tcp_iface: unknown iface family=%d", iface->config.ifaddr.ss_family);
+        return UCS_ERR_IO_ERROR;
+    }
     return UCS_OK;
 }
 
@@ -126,9 +166,27 @@ static ucs_status_t uct_tcp_iface_query(uct_iface_h tl_iface, uct_iface_attr_t *
     if (status != UCS_OK) {
         return status;
     }
+    struct port_scope_id {
+        sa_family_t ss_family;
+        in_port_t   sin_port;
+        uint32_t    sin_scope_id;
+    };
 
-    attr->iface_addr_len   = sizeof(in_port_t);
-    attr->device_addr_len  = sizeof(struct in_addr);
+    
+    if (iface->config.ifaddr.ss_family == AF_INET6) {
+        ucs_info("tcp_iface: iface family=%d", iface->config.ifaddr.ss_family);
+        attr->iface_addr_len   = sizeof(struct port_scope_id);
+        attr->device_addr_len  = sizeof(struct in6_addr);
+    } else if (iface->config.ifaddr.ss_family == AF_INET) {
+        ucs_info("tcp_iface: iface family=%d", iface->config.ifaddr.ss_family);
+        attr->iface_addr_len   = sizeof(struct port_scope_id);
+        attr->device_addr_len  = sizeof(struct in_addr);
+    } else {
+        ucs_error("tcp_iface: unknown iface family=%d", iface->config.ifaddr.ss_family);
+        return UCS_ERR_IO_ERROR;
+    }
+
+    
     attr->cap.flags        = UCT_IFACE_FLAG_CONNECT_TO_IFACE |
                              UCT_IFACE_FLAG_AM_SHORT         |
                              UCT_IFACE_FLAG_AM_BCOPY         |
@@ -256,7 +314,7 @@ static void uct_tcp_iface_listen_close(uct_tcp_iface_t *iface)
 static void uct_tcp_iface_connect_handler(int listen_fd, int events, void *arg)
 {
     uct_tcp_iface_t *iface = arg;
-    struct sockaddr_in peer_addr;
+    struct sockaddr_storage peer_addr;
     socklen_t addrlen;
     ucs_status_t status;
     int fd;
@@ -330,13 +388,23 @@ static uct_iface_ops_t uct_tcp_iface_ops = {
 
 static ucs_status_t uct_tcp_iface_listener_init(uct_tcp_iface_t *iface)
 {
-    struct sockaddr_in bind_addr = iface->config.ifaddr;
-    socklen_t socklen            = sizeof(bind_addr);
+    struct sockaddr_storage bind_addr = iface->config.ifaddr;
+    socklen_t socklen;
     char ip_port_str[UCS_SOCKADDR_STRING_LEN];
     ucs_status_t status;
     int ret;
 
-    bind_addr.sin_port = 0;     /* use a random port */
+    if (bind_addr.ss_family == AF_INET) {
+        socklen = sizeof(struct sockaddr_in);
+        ((struct sockaddr_in*)(&bind_addr))->sin_port = 0;     /* use a random port */
+    } else if (bind_addr.ss_family == AF_INET6) {
+        socklen = sizeof(struct sockaddr_in6);
+        ((struct sockaddr_in6*)(&bind_addr))->sin6_port = 0;     /* use a random port */
+    } else {
+        ucs_error("tcp_iface: unknown iface family=%d", iface->config.ifaddr.ss_family);
+        return UCS_ERR_IO_ERROR;
+    }
+
     status = ucs_socket_server_init((struct sockaddr *)&bind_addr,
                                     sizeof(bind_addr), ucs_socket_max_conn(),
                                     &iface->listen_fd);
@@ -352,7 +420,16 @@ static ucs_status_t uct_tcp_iface_listener_init(uct_tcp_iface_t *iface)
         goto err_close_sock;
     }
 
-    iface->config.ifaddr.sin_port = bind_addr.sin_port;
+    if (bind_addr.ss_family == AF_INET) {
+        ((struct sockaddr_in*)(&iface->config.ifaddr))->sin_port   = ((struct sockaddr_in*)(&bind_addr))->sin_port;
+    } else if (bind_addr.ss_family == AF_INET6) {
+        ((struct sockaddr_in6*)(&iface->config.ifaddr))->sin6_port = ((struct sockaddr_in6*)(&bind_addr))->sin6_port;
+        ((struct sockaddr_in6*)(&iface->config.ifaddr))->sin6_scope_id = ((struct sockaddr_in6*)(&bind_addr))->sin6_scope_id;
+        //ucs_info("leibin bind_addr sin6_scope_id: %d", ((struct sockaddr_in6*)(&bind_addr))->sin6_scope_id);
+    } else {
+        ucs_error("tcp_iface: unknown iface family=%d", iface->config.ifaddr.ss_family);
+        return UCS_ERR_IO_ERROR;
+    }
 
     /* Register event handler for incoming connections */
     status = ucs_async_set_event_handler(iface->super.worker->async->mode,
@@ -485,12 +562,24 @@ static UCS_CLASS_INIT_FUNC(uct_tcp_iface_t, uct_md_h md, uct_worker_h worker,
         goto err_cleanup_tx_mpool;
     }
 
-    status = uct_tcp_netif_inaddr(self->if_name, &self->config.ifaddr,
+/*    status = uct_tcp_netif_inaddr(self->if_name, &self->config.ifaddr,
                                   &self->config.netmask);
     if (status != UCS_OK) {
         goto err_cleanup_rx_mpool;
+    }*/
+    self->config.ifaddr  = *params->mode.device.ifaddr;
+    self->config.netmask = *params->mode.device.netmask;
+    ucs_info("%s family: %d", params->mode.device.dev_name, params->mode.device.ifaddr->ss_family);  
+    if (params->mode.device.ifaddr->ss_family != AF_INET && params->mode.device.ifaddr->ss_family != AF_INET6) {
+        ucs_log_print_backtrace(UCS_LOG_LEVEL_INFO);
     }
-
+    char str[INET6_ADDRSTRLEN];
+    memset(str, 0, INET6_ADDRSTRLEN);
+    if(inet_ntop(params->mode.device.ifaddr->ss_family, params->mode.device.ifaddr->__ss_padding, str, INET6_ADDRSTRLEN) == NULL){       
+        ucs_info("tcp_iface ip error error");    
+    } else {
+        ucs_info("ip: %s", str);  
+    }
     status = ucs_event_set_create(&self->event_set);
     if (status != UCS_OK) {
         status = UCS_ERR_IO_ERROR;
@@ -591,45 +680,26 @@ ucs_status_t uct_tcp_query_devices(uct_md_h md,
                                    unsigned *num_devices_p)
 {
     uct_tl_device_resource_t *devices, *tmp;
-    static const char *netdev_dir = "/sys/class/net";
-    struct dirent *entry;
+    struct ifaddrs *ifaddr, *ifa;
     unsigned num_devices;
     ucs_status_t status;
-    DIR *dir;
-
-    dir = opendir(netdev_dir);
-    if (dir == NULL) {
-        ucs_error("opendir(%s) failed: %m", netdev_dir);
+    int family;
+    
+    if (getifaddrs(&ifaddr) != 0) {
         status = UCS_ERR_IO_ERROR;
         goto out;
     }
 
     devices     = NULL;
     num_devices = 0;
-    for (;;) {
-        errno = 0;
-        entry = readdir(dir);
-        if (entry == NULL) {
-            if (errno != 0) {
-                ucs_error("readdir(%s) failed: %m", netdev_dir);
-                ucs_free(devices);
-                status = UCS_ERR_IO_ERROR;
-                goto out_closedir;
-            }
-            break; /* no more items */
-        }
-
-        /* According to the sysfs(5) manual page, all of entries
-         * has to be a symbolic link representing one of the real
-         * or virtual networking devices that are visible in the
-         * network namespace of the process that is accessing the
-         * directory. Let's avoid checking files that are not a
-         * symbolic link, e.g. "." and ".." entries */
-        if (entry->d_type != DT_LNK) {
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
             continue;
-        }
+        family = ifa->ifa_addr->sa_family;
+        if (family != AF_INET && family != AF_INET6)
+            continue;
 
-        if (!ucs_netif_is_active(entry->d_name)) {
+        if (!ucs_netif_flags_is_active(ifa->ifa_flags)) {
             continue;
         }
 
@@ -638,23 +708,73 @@ ucs_status_t uct_tcp_query_devices(uct_md_h md,
         if (tmp == NULL) {
             ucs_free(devices);
             status = UCS_ERR_NO_MEMORY;
-            goto out_closedir;
+            goto free_out;
         }
         devices = tmp;
 
         ucs_snprintf_zero(devices[num_devices].name,
                           sizeof(devices[num_devices].name),
-                          "%s", entry->d_name);
+                          "%s", ifa->ifa_name);
+
+        if (family == AF_INET) {
+            memcpy(&devices[num_devices].ifaddr, ifa->ifa_addr, sizeof(struct sockaddr_in));
+            memcpy(&devices[num_devices].netmask, ifa->ifa_netmask, sizeof(struct sockaddr_in));
+        } else if (family == AF_INET6) {
+            memcpy(&devices[num_devices].ifaddr, ifa->ifa_addr, sizeof(struct sockaddr_in6));
+            memcpy(&devices[num_devices].netmask, ifa->ifa_netmask, sizeof(struct sockaddr_in6));
+        } else {
+            ucs_error("tcp_iface: unknown iface family=%d", family);
+            status = UCS_ERR_IO_ERROR;
+            goto free_out;
+        }
         devices[num_devices].type = UCT_DEVICE_TYPE_NET;
+        ucs_info("%s family2: %d", ifa->ifa_name, ifa->ifa_addr->sa_family);
+        ucs_info("%s family4: %d", devices[num_devices].name, devices[num_devices].ifaddr.ss_family);
         ++num_devices;
+
+
+        //ucs_error("ifa_name: %s", ifa->ifa_name);
     }
 
-    *num_devices_p = num_devices;
+    //IPv4 if available, otherwise IPv6
+    uint8_t* processed = ucs_malloc(num_devices, "processed flag");
+    unsigned new_num_devices = 0;
+    int i;
+    int j;
+    for (i = 0; i < num_devices; i++) {
+        processed[i] = 0;
+    }
+    for (i = 0; i < num_devices - 1; i++) {
+        if (!processed[i]) {
+            for(j = i + 1; j < num_devices; j++) {
+                if (!processed[j]) {
+                    if (!strcmp(devices[i].name, devices[j].name)) {
+                        processed[i] = 1;
+                        processed[j] = 1;
+                        if (devices[i].ifaddr.ss_family == AF_INET) {
+                            memcpy(&devices[new_num_devices++], &devices[i], sizeof(uct_tl_device_resource_t));
+                        } else {
+                            memcpy(&devices[new_num_devices++], &devices[j], sizeof(uct_tl_device_resource_t));
+                        }
+                    }
+                }
+            }
+            if (!processed[i]) {
+                processed[i] = 1;
+                memcpy(&devices[new_num_devices++], &devices[i], sizeof(uct_tl_device_resource_t));
+            }
+        }
+    }
+    if (!processed[num_devices - 1]) {
+        processed[num_devices - 1] = 1;
+        memcpy(&devices[new_num_devices++], &devices[num_devices - 1], sizeof(uct_tl_device_resource_t));
+    }
+    ucs_free(processed);
+    *num_devices_p = new_num_devices;
     *devices_p     = devices;
     status         = UCS_OK;
-
-out_closedir:
-    closedir(dir);
+free_out:
+    freeifaddrs(ifaddr);
 out:
     return status;
 }

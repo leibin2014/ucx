@@ -51,6 +51,8 @@ struct resource {
     std::string             tl_name;
     std::string             dev_name;
     std::string             variant_name;
+    ucs::sock_addr_storage  ifaddr;
+    ucs::sock_addr_storage  netmask;
     uct_device_type_t       dev_type;
     ucs::sock_addr_storage  listen_sock_addr;     /* sockaddr to listen on */
     ucs::sock_addr_storage  connect_sock_addr;    /* sockaddr to connect to */
@@ -59,7 +61,11 @@ struct resource {
     resource();
     resource(uct_component_h component, const std::string& md_name,
              const ucs_cpu_set_t& local_cpus, const std::string& tl_name,
-             const std::string& dev_name, uct_device_type_t dev_type);
+             const std::string& dev_name, const uct_device_type_t dev_type);
+    resource(uct_component_h component, const std::string& md_name,
+             const ucs_cpu_set_t& local_cpus, const std::string& tl_name,
+             const std::string& dev_name, const ucs::sock_addr_storage& ifaddr,
+             const ucs::sock_addr_storage& netmask, const uct_device_type_t dev_type);
     resource(uct_component_h component, const uct_md_attr_t& md_attr,
              const uct_md_resource_desc_t& md_resource,
              const uct_tl_resource_desc_t& tl_resource);
@@ -390,7 +396,9 @@ protected:
     static void set_interface_rscs(uct_component_h comt, const char * name,
                                    ucs_cpu_set_t local_cpus, struct ifaddrs *ifa,
                                    std::vector<resource>& all_resources);
-    static void init_sockaddr_rsc(resource *rsc, struct sockaddr *listen_addr,
+    static void init_sockaddr_rsc(resource *rsc, struct sockaddr *addr,
+                                  struct sockaddr *netmask,
+                                  struct sockaddr *listen_addr,
                                   struct sockaddr *connect_addr, size_t size);
     uct_test::entity* create_entity(size_t rx_headroom,
                                     uct_error_handler_t err_handler = NULL,
