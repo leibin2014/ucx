@@ -67,6 +67,27 @@ typedef struct {
 #define LOG         UcxLog(LOG_PREFIX, true)
 #define VERBOSE_LOG UcxLog(LOG_PREFIX, _test_opts.verbose)
 
+class CounterSet {
+public:
+    void add_counter(long* counter) {
+        _counters.push_back(counter);
+    }
+
+    void empty_counters() {
+        _counters.clear();
+    }
+
+    CounterSet& operator++() {
+        for (size_t i = 0; i < _counters.size(); ++i) {
+            ++(*_counters[i]);
+        }
+        return *this;
+    }
+
+private:
+    std::vector<long*> _counters;
+};
+
 template<class T, bool use_offcache = false>
 class MemoryPool {
 public:
@@ -629,20 +650,24 @@ public:
     public:
         IoReadResponseCallback(size_t buffer_size,
             MemoryPool<IoReadResponseCallback>& pool) :
-            _counter(0), _io_counter(0), _sn(0), _validate(false), _iov(NULL),
-            _buffer(malloc(buffer_size)), _pool(pool) {
+            _comp_counter(0), _io_counter(0), _conn_io_counter(0), _sn(0),
+            _validate(false), _iov(NULL), _buffer(malloc(buffer_size)), _pool(pool) {
 
             if (_buffer == NULL) {
                 throw std::bad_alloc();
             }
         }
 
-        void init(long *counter, uint32_t sn, bool validate, BufferIov *iov) {
-            _counter     = iov->size() + 1; /* wait data and response completion */;
-            _io_counter  = counter;
-            _sn          = sn;
-            _validate    = validate;
-            _iov         = iov;
+        void init(long *io_counter, long *conn_io_counter, uint32_t sn, bool validate, BufferIov *iov) {
+            _comp_counter    = iov->size() + 1; /* wait data and response completion */;
+            _io_counter      = io_counter;
+            _conn_io_counter = conn_io_counter;
+            _sn              = sn;
+            _validate        = validate;
+            _iov             = iov;
+            _counters.empty_counters();
+            _counters.add_counter(_io_counter);
+            _counters.add_counter(_conn_io_counter);
         }
 
         ~IoReadResponseCallback() {
@@ -650,11 +675,11 @@ public:
         }
 
         virtual void operator()(ucs_status_t status) {
-            if (--_counter > 0) {
+            if (--_comp_counter > 0) {
                 return;
             }
 
-            ++(*_io_counter);
+            ++_counters;
             if (_validate && (status == UCS_OK)) {
                 if (!validate(_sn, *_iov)) {
                     abort();
@@ -670,8 +695,10 @@ public:
         }
 
     private:
-        long                                _counter;
+        long                                _comp_counter;
         long*                               _io_counter;
+        long*                               _conn_io_counter;
+        CounterSet                          _counters;
         uint32_t                            _sn;
         bool                                _validate;
         BufferIov*                          _iov;
@@ -681,7 +708,8 @@ public:
 
     DemoClient(const options_t& test_opts) :
         P2pDemoCommon(test_opts),
-        _num_sent(0), _num_completed(0), _status(OK), _start_time(get_time()),
+        _num_connected(0), _num_sent(0),
+        _num_completed(0), _status(OK), _start_time(get_time()),
         _retry(0), _read_callback_pool(opts().iomsg_size)
     {
         _status_str[OK]                    = "ok";
@@ -697,22 +725,28 @@ public:
         CONN_RETRIES_EXCEEDED
     } status_t;
 
+    uint32_t get_server_index(const UcxConnection *conn) {
+        return (conn->id() - 1);
+    }
+
     size_t do_io_read(UcxConnection *conn, uint32_t sn) {
         size_t data_size = get_data_size();
         IoMessage *m     = _io_msg_pool.get();
 
         m->init(IO_READ, sn, data_size, opts().validate);
         if (!send_io_message(conn, m)) {
-            return data_size;
+            return 0;
         }
 
+        int index = get_server_index(conn);
+        ++_server_info[index].num_sent;
         ++_num_sent;
 
         BufferIov *iov            = _data_buffers_pool.get();
         IoReadResponseCallback *r = _read_callback_pool.get();
 
         iov->init(data_size, _data_chunks_pool, sn, false);
-        r->init(&_num_completed, sn, opts().validate, iov);
+        r->init(&_num_completed, &_server_info[index].num_completed, sn, opts().validate, iov);
 
         recv_data(conn, *iov, sn, r);
         conn->recv_data(r->buffer(), opts().iomsg_size, sn, r);
@@ -724,9 +758,11 @@ public:
         size_t data_size = get_data_size();
 
         if (!send_io_message(conn, IO_WRITE, sn, data_size)) {
-            return data_size;
+            return 0;
         }
 
+        int index = get_server_index(conn);
+        ++_server_info[index].num_sent;
         ++_num_sent;
 
         BufferIov *iov           = _data_buffers_pool.get();
@@ -751,12 +787,23 @@ public:
 
         if (msg->op >= IO_COMP_MIN) {
             ++_num_completed;
+            ++_server_info[get_server_index(conn)].num_completed;
         }
+    }
+
+    long get_num_imcompleted(int server_index) {
+        return (_server_info[server_index].num_sent
+                - _server_info[server_index].num_completed);
     }
 
     virtual void dispatch_connection_error(UcxConnection *conn) {
         LOG << "setting error flag on connection " << conn;
-        _status = ERROR;
+        --_num_connected;        
+        int index                    = get_server_index(conn);
+        _num_sent                   -= get_num_imcompleted(index);
+        _server_info[index].conn     = NULL;
+        _server_info[index].num_sent = _server_info[index].num_completed;
+        delete conn;
     }
 
     bool wait_for_responses(long max_outstanding) {
@@ -795,7 +842,7 @@ public:
         return (_status == OK);
     }
 
-    UcxConnection* connect(const char* server) {
+    UcxConnection* connect(const char* server, uint32_t conn_id = 0) {
         struct sockaddr_in connect_addr;
         std::string server_addr;
         int port_num;
@@ -823,7 +870,7 @@ public:
         }
 
         return UcxContext::connect((const struct sockaddr*)&connect_addr,
-                                   sizeof(connect_addr));
+                                   sizeof(connect_addr), conn_id);
     }
 
     static double get_time() {
@@ -833,34 +880,35 @@ public:
     }
 
     bool run() {
-        std::vector<UcxConnection*> conn;
-        conn.resize(opts().servers.size());
-        for (size_t i = 0; i < conn.size(); i++) {
-            conn[i] = connect(opts().servers[i]);
-            if (!conn[i]) {
-                LOG << "Connect to server ["
-                    << opts().servers[i]
-                    << "] Failed!";
-                for (size_t j = 0; j < i; j++) {
-                    delete conn[j];
+        if (_server_info.empty()) {
+            _server_info.resize(opts().servers.size());
+        }
+        for (size_t i = 0; i < _server_info.size(); i++) {
+            if (_server_info[i].conn == NULL) {
+                _server_info[i].conn = connect(opts().servers[i], i + 1);
+                if (!_server_info[i].conn) {
+                    LOG << "Connect to server ["
+                        << opts().servers[i]
+                        << "] Failed!";
+                } else {
+                    _num_connected++;
                 }
-                return false;
             }
         }
-
-        // reset number of retries after successful connection
-        _retry = 0;
-
+        if (_num_connected == 0) {
+            return false;
+        }
         _status = OK;
 
         // TODO reset these values by canceling requests
         _num_sent      = 0;
         _num_completed = 0;
 
-        uint32_t sn          = IoDemoRandom::rand<uint32_t>();
-        double prev_time     = get_time();
-        long total_iter      = 0;
-        long total_prev_iter = 0;
+        uint32_t sn                = IoDemoRandom::rand<uint32_t>();
+        double prev_time           = get_time();
+        double prev_reconnect_time = get_time();
+        long total_iter            = 0;
+        long total_prev_iter       = 0;
         std::vector<op_info_t> info;
 
         for (int i = 0; i < IO_OP_MAX; ++i) {
@@ -868,22 +916,48 @@ public:
             info.push_back(op_info);
         }
 
-        while ((total_iter < opts().iter_count) && (_status == OK)) {
+        while ((total_iter < opts().iter_count)) {
             VERBOSE_LOG << " <<<< iteration " << total_iter << " >>>>";
 
             if (!wait_for_responses(opts().window_size - 1)) {
                 break;
             }
 
-            size_t conn_num = IoDemoRandom::rand(size_t(0), conn.size() - 1);
-            io_op_t op      = get_op();
+            if (_num_connected < _server_info.size()) {
+                double curr_time = get_time();
+                if (curr_time >= (prev_reconnect_time + 3.0)) {
+                    prev_reconnect_time = curr_time;
+                    for (size_t i = 0; i < _server_info.size(); i++) {
+                        if (_server_info[i].conn == NULL) {
+                            _server_info[i].conn = connect(opts().servers[i], i + 1);
+                            if (_server_info[i].conn) {
+                                _num_connected++;
+                            }
+                        }
+                    }
+                }
+            }
+            if (_num_connected == 0) {
+                LOG << "Are servers are disconnected";
+                _status = ERROR;
+                break;
+            }
+            size_t conn_index;
+            while (1) {
+                conn_index = IoDemoRandom::rand(size_t(0), _server_info.size() - 1);
+                if (_server_info[conn_index].conn != NULL) {
+                    break;
+                }
+            }
+
+            io_op_t op = get_op();
             size_t size;
             switch (op) {
             case IO_READ:
-                size = do_io_read(conn[conn_num], sn);
+                size = do_io_read(_server_info[conn_index].conn, sn);
                 break;
             case IO_WRITE:
-                size = do_io_write(conn[conn_num], sn);
+                size = do_io_write(_server_info[conn_index].conn, sn);
                 break;
             default:
                 abort();
@@ -919,9 +993,10 @@ public:
             check_time_limit(curr_time);
         }
 
-        for (size_t i = 0; i < conn.size(); i++) {
+        for (size_t i = 0; i < _server_info.size(); i++) {
             LOG << "Disconnecting from server " << i;
-            delete conn[i];
+            delete _server_info[i].conn;
+            _server_info[i].conn = NULL;
         }
         return (_status == OK) || (_status == RUNTIME_EXCEEDED);
     }
@@ -1019,10 +1094,37 @@ private:
             if (opts().window_size == 1) {
                 log << ", average latency: " << latency_usec << " usec";
             }
+
+            long min = _server_info[0].num_completed;
+            long max = _server_info[0].num_completed;
+            long avg = 0;
+            for (int i = 0; i < _server_info.size(); i++) {
+                if (_server_info[i].num_completed < min) {
+                    min = _server_info[i].num_completed;
+                }
+                if (_server_info[i].num_completed > max) {
+                    max = _server_info[i].num_completed;
+                }
+                avg += _server_info[i].num_completed;
+                _server_info[i].num_completed = 0;
+                _server_info[i].num_sent       = 0;
+            }
+            avg /= _server_info.size();
+            std::cout << ", " << _server_info.size() << " conns";
+            std::cout << " min " << min << " max " << max << " avg " << avg;
+
+            std::cout << std::endl;
         }
     }
 
 private:
+    typedef struct {
+        long           num_sent;
+        long           num_completed;
+        UcxConnection* conn;
+    } server_info_t; 
+    std::vector<server_info_t>         _server_info;
+    size_t                             _num_connected;
     long                               _num_sent;
     long                               _num_completed;
     status_t                           _status;

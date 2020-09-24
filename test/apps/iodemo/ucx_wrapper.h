@@ -80,7 +80,7 @@ public:
 
     bool listen(const struct sockaddr* saddr, size_t addrlen);
 
-    UcxConnection* connect(const struct sockaddr* saddr, size_t addrlen);
+    UcxConnection* connect(const struct sockaddr* saddr, size_t addrlen, uint32_t conn_id = 0);
 
     void progress();
 
