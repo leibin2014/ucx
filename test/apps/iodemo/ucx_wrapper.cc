@@ -143,12 +143,9 @@ bool UcxContext::listen(const struct sockaddr* saddr, size_t addrlen)
     return true;
 }
 
-UcxConnection* UcxContext::connect(const struct sockaddr* saddr, size_t addrlen, uint32_t conn_id)
+UcxConnection* UcxContext::connect(const struct sockaddr* saddr, size_t addrlen)
 {
-    if (conn_id == 0) {
-        conn_id = get_next_conn_id();
-    }
-    UcxConnection *conn = new UcxConnection(*this, conn_id);
+    UcxConnection *conn = new UcxConnection(*this, get_next_conn_id());
     if (!conn->connect(saddr, addrlen)) {
         delete conn;
         return NULL;
