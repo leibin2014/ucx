@@ -698,8 +698,7 @@ public:
         P2pDemoCommon(test_opts),
         _num_sent(0), _num_completed(0),
         _status(OK), _start_time(get_time()),
-        _retry(0), _num_retry_exceeded_servers(0),
-        _read_callback_pool(opts().iomsg_size) {
+        _retry(0), _read_callback_pool(opts().iomsg_size) {
     }
 
     typedef enum {
@@ -910,10 +909,8 @@ public:
         log << ")";
 
         if (server_info.retry_count >= opts().client_retries) {
-            ++_num_retry_exceeded_servers;
-            if (_num_retry_exceeded_servers == opts().servers.size()) {
-                _status = CONN_RETRIES_EXCEEDED;
-            }
+            /* If at least one server exceeded its retries, bail */
+            _status = CONN_RETRIES_EXCEEDED;
         }
     }
 
@@ -1127,6 +1124,8 @@ private:
             op_info[op_id].num_iters   = 0;
         }
 
+        log << ", active: " << _active_servers.size();
+
         if (opts().window_size == 1) {
             log << ", latency: " << latency_usec << " usec";
         }
@@ -1141,7 +1140,6 @@ private:
     status_t                                _status;
     double                                  _start_time;
     unsigned                                _retry;
-    unsigned                                _num_retry_exceeded_servers;
     MemoryPool<IoReadResponseCallback>      _read_callback_pool;
 };
 
