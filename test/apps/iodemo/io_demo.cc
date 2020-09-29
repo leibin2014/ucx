@@ -640,7 +640,7 @@ public:
         IoReadResponseCallback(size_t buffer_size,
             MemoryPool<IoReadResponseCallback>& pool) :
             _comp_counter(0), _io_counter(NULL),
-            _conn_io_counter(NULL), _sn(0),
+            _server_io_counter(NULL), _sn(0),
             _validate(false), _iov(NULL),
             _buffer(malloc(buffer_size)), _pool(pool) {
 
@@ -652,12 +652,12 @@ public:
         void init(long *io_counter, long *conn_io_counter,
                   uint32_t sn, bool validate, BufferIov *iov) {
             /* wait for all data chunks and the read response completion */
-            _comp_counter    = iov->size() + 1;
-            _io_counter      = io_counter;
-            _conn_io_counter = conn_io_counter;
-            _sn              = sn;
-            _validate        = validate;
-            _iov             = iov;
+            _comp_counter      = iov->size() + 1;
+            _io_counter        = io_counter;
+            _server_io_counter = conn_io_counter;
+            _sn                = sn;
+            _validate          = validate;
+            _iov               = iov;
         }
 
         ~IoReadResponseCallback() {
@@ -670,7 +670,7 @@ public:
             }
 
             ++(*_io_counter);
-            ++(*_conn_io_counter);
+            ++(*_server_io_counter);
             if (_validate && (status == UCS_OK)) {
                 if (!validate(_sn, *_iov)) {
                     abort();
@@ -688,7 +688,7 @@ public:
     private:
         long                                _comp_counter;
         long*                               _io_counter;
-        long*                               _conn_io_counter;
+        long*                               _server_io_counter;
         uint32_t                            _sn;
         bool                                _validate;
         BufferIov*                          _iov;
@@ -709,7 +709,7 @@ public:
         WAIT_RESPONSES_TIMEOUT
     } status_t;
 
-    uint32_t get_server_index(const UcxConnection *conn) {
+    size_t get_server_index(const UcxConnection *conn) {
         return _server_index_lookup[conn];
     }
 
@@ -803,18 +803,10 @@ public:
         delete conn;
 
         // Replace in _active_servers by the last element in the vector
-        size_t active_index = server_info.active_index;
-        assert(_active_servers[active_index] == server_index);
-        size_t replacement_server_index = _active_servers.back();
+        std::swap(_active_servers[server_info.active_index],
+                  _active_servers.back());
+        assert(_active_servers.back() == server_index);
         _active_servers.pop_back();
-        if (!_active_servers.empty()) {
-            _active_servers[active_index] = replacement_server_index;
-            _server_info[replacement_server_index].active_index = active_index;
-        } else {
-            // Removed the last server
-            assert(replacement_server_index == server_index);
-        }
-
         reset_server_info(server_info);
     }
 
@@ -935,15 +927,22 @@ public:
         for (size_t server_index = 0; server_index < _server_info.size();
              ++server_index) {
             server_info_t& server_info = _server_info[server_index];
-            if ((server_info.conn != NULL) ||
-                (server_info.retry_count >= opts().client_retries)) {
-                /* server is already connected, or retry count exceeded */
+            if (server_info.conn != NULL) {
+                // Server is already connected
                 continue;
             }
+
+            // If retry count exceeded for at least one server, we should have
+            // exited already
+            assert(_status == OK);
+            assert(server_info.retry_count < opts().client_retries);
 
             server_info.conn = connect(opts().servers[server_index]);
             if (server_info.conn == NULL) {
                 connect_failed(server_index);
+                if (!_status != OK) {
+                    break;
+                }
                 continue;
             }
 
@@ -990,7 +989,8 @@ public:
             }
 
             if (_active_servers.empty()) {
-                LOG << "All servers are disconnected";
+                LOG << "All remote servers are down, reconnecting in "
+                    << opts().client_timeout << " seconds";
                 sleep(opts().client_timeout);
                 continue;
             }
