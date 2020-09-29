@@ -630,7 +630,7 @@ public:
         UcxConnection* conn;
         long           retry_count;               /* Connect retry counter */
         long           num_sent;                  /* Total number of sent operations */
-        int            active_index;              /* Index in active vector */
+        size_t         active_index;              /* Index in active vector */
         long           num_completed[IO_OP_MAX];  /* Number of completed operations */
         long           prev_completed[IO_OP_MAX]; /* Completed in last report */
     } server_info_t;
@@ -803,7 +803,7 @@ public:
         delete conn;
 
         // Replace in _active_servers by the last element in the vector
-        int active_index           = server_info.active_index;
+        size_t active_index = server_info.active_index;
         assert(_active_servers[active_index] == server_index);
         size_t replacement_server_index = _active_servers.back();
         _active_servers.pop_back();
@@ -914,7 +914,24 @@ public:
         }
     }
 
-    void connect_all() {
+    void connect_all(bool force) {
+        if (_active_servers.size() == _server_info.size()) {
+            // All servers are connected
+            return;
+        }
+
+        if (!force && !_active_servers.empty()) {
+            // The active list is not empty, and we don't have to check the
+            // connect retry timeout
+            return;
+        }
+
+        double curr_time = get_time();
+        if (curr_time < (_prev_connect_time + opts().client_timeout)) {
+            // Not enough time elapsed since previous connection attempt
+            return;
+        }
+
         for (size_t server_index = 0; server_index < _server_info.size();
              ++server_index) {
             server_info_t& server_info = _server_info[server_index];
@@ -938,6 +955,8 @@ public:
 
             LOG << "Connected to " << server_name(server_index);
         }
+
+        _prev_connect_time = curr_time;
     }
 
     status_t run() {
@@ -965,19 +984,9 @@ public:
                 break;
             }
 
-            /* Always try to reconnect every if all servers are disconnected,
-             * or try every 10 iterations if only some servers are disconnected
-             */
-            if ((_active_servers.size() < _server_info.size()) &&
-                (_active_servers.empty() || ((total_iter % 10) == 0))) {
-                double curr_time = get_time();
-                if (curr_time > (_prev_connect_time + opts().client_timeout)) {
-                    _prev_connect_time = curr_time;
-                    connect_all();
-                    if (_status != OK) {
-                        break;
-                    }
-                }
+            connect_all((total_iter % 10) == 0);
+            if (_status != OK) {
+                break;
             }
 
             if (_active_servers.empty()) {
@@ -987,8 +996,8 @@ public:
             }
 
             /* Pick random connected server */
-            int active_index = IoDemoRandom::rand(size_t(0),
-                                                  _active_servers.size() - 1);
+            size_t active_index = IoDemoRandom::rand(size_t(0),
+                                                     _active_servers.size() - 1);
             size_t server_index = _active_servers[active_index];
             assert(_server_info[server_index].conn != NULL);
 
@@ -1134,7 +1143,7 @@ private:
 
 private:
     std::vector<server_info_t>              _server_info;
-    std::vector<int>                        _active_servers;
+    std::vector<size_t>                     _active_servers;
     std::map<const UcxConnection*, size_t>  _server_index_lookup;
     double                                  _prev_connect_time;
     long                                    _num_sent;
