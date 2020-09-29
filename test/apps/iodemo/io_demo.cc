@@ -639,8 +639,10 @@ public:
     public:
         IoReadResponseCallback(size_t buffer_size,
             MemoryPool<IoReadResponseCallback>& pool) :
-            _comp_counter(0), _io_counter(NULL), _conn_io_counter(NULL), _sn(0),
-            _validate(false), _iov(NULL), _buffer(malloc(buffer_size)), _pool(pool) {
+            _comp_counter(0), _io_counter(NULL),
+            _conn_io_counter(NULL), _sn(0),
+            _validate(false), _iov(NULL),
+            _buffer(malloc(buffer_size)), _pool(pool) {
 
             if (_buffer == NULL) {
                 throw std::bad_alloc();
@@ -695,7 +697,7 @@ public:
     };
 
     DemoClient(const options_t& test_opts) :
-        P2pDemoCommon(test_opts),
+        P2pDemoCommon(test_opts), _prev_connect_time(0),
         _num_sent(0), _num_completed(0),
         _status(OK), _start_time(get_time()),
         _retry(0), _read_callback_pool(opts().iomsg_size) {
@@ -708,7 +710,7 @@ public:
     } status_t;
 
     uint32_t get_server_index(const UcxConnection *conn) {
-        return _conn_idx[conn];
+        return _server_index_lookup[conn];
     }
 
     size_t do_io_read(server_info_t& server_info, uint32_t sn) {
@@ -773,7 +775,7 @@ public:
         }
     }
 
-    long get_num_uncompleted(int server_index) const {
+    long get_num_uncompleted(size_t server_index) const {
         return _server_info[server_index].num_sent -
                (_server_info[server_index].num_completed[IO_READ] +
                 _server_info[server_index].num_completed[IO_WRITE]);
@@ -790,20 +792,20 @@ public:
 
     virtual void dispatch_connection_error(UcxConnection *conn) {
         LOG << "setting error flag on connection " << conn;
-        int server_index           = get_server_index(conn);
+        size_t server_index        = get_server_index(conn);
         server_info_t& server_info = _server_info[server_index];
 
         // Don't wait from completions on this connection
         _num_sent -= get_num_uncompleted(server_index);
 
         // Remove connection pointer
-        _conn_idx.erase(conn);
+        _server_index_lookup.erase(conn);
         delete conn;
 
         // Replace in _active_servers by the last element in the vector
         int active_index           = server_info.active_index;
         assert(_active_servers[active_index] == server_index);
-        int replacement_server_index = _active_servers.back();
+        size_t replacement_server_index = _active_servers.back();
         _active_servers.pop_back();
         if (!_active_servers.empty()) {
             _active_servers[active_index] = replacement_server_index;
@@ -887,13 +889,13 @@ public:
         return tv.tv_sec + (tv.tv_usec * 1e-6);
     }
 
-    const std::string server_name(unsigned server_index) {
+    const std::string server_name(size_t server_index) {
         std::stringstream ss;
         ss << "server [" << server_index << "] " << opts().servers[server_index];
         return ss.str();
     }
 
-    void connect_failed(unsigned server_index) {
+    void connect_failed(size_t server_index) {
         server_info_t& server_info = _server_info[server_index];
 
         ++server_info.retry_count;
@@ -913,7 +915,7 @@ public:
     }
 
     void connect_all() {
-        for (int server_index = 0; server_index < _server_info.size();
+        for (size_t server_index = 0; server_index < _server_info.size();
              ++server_index) {
             server_info_t& server_info = _server_info[server_index];
             if ((server_info.conn != NULL) ||
@@ -929,7 +931,7 @@ public:
             }
 
             server_info.retry_count = 0;
-            _conn_idx[server_info.conn] = server_index;
+            _server_index_lookup[server_info.conn] = server_index;
 
             server_info.active_index = _active_servers.size();
             _active_servers.push_back(server_index);
@@ -951,7 +953,6 @@ public:
 
         uint32_t sn                  = IoDemoRandom::rand<uint32_t>();
         double prev_time             = get_time();
-        double prev_connect_time     = 0;
         long total_iter              = 0;
         long total_prev_iter         = 0;
         op_info_t op_info[IO_OP_MAX] = {{0,0}};
@@ -970,8 +971,8 @@ public:
             if ((_active_servers.size() < _server_info.size()) &&
                 (_active_servers.empty() || ((total_iter % 10) == 0))) {
                 double curr_time = get_time();
-                if (curr_time > (prev_connect_time + opts().client_timeout)) {
-                    prev_connect_time = curr_time;
+                if (curr_time > (_prev_connect_time + opts().client_timeout)) {
+                    _prev_connect_time = curr_time;
                     connect_all();
                     if (_status != OK) {
                         break;
@@ -1034,13 +1035,13 @@ public:
                                curr_time - prev_time, op_info);
         }
 
-        for (int server_index = 0; server_index < _server_info.size();
+        for (size_t server_index = 0; server_index < _server_info.size();
              ++server_index) {
             LOG << "Disconnecting from server " << server_name(server_index);
             delete _server_info[server_index].conn;
             _server_info[server_index].conn = NULL;
         }
-        _conn_idx.clear();
+        _server_index_lookup.clear();
         _active_servers.clear();
 
         return _status;
@@ -1106,7 +1107,7 @@ private:
 
             // Collect min/max among all connections
             long delta_min = std::numeric_limits<long>::max(), delta_max = 0;
-            for (int server_index = 0; server_index < _server_info.size();
+            for (size_t server_index = 0; server_index < _server_info.size();
                  ++server_index) {
                 server_info_t& server_info = _server_info[server_index];
                 long delta_completed = server_info.num_completed[op_id] -
@@ -1120,7 +1121,7 @@ private:
 
             // Report delta of min/max/total operations for every connection
             log << " min:" << delta_min << " max:" << delta_max
-                << " total:" << op_info[op_id].num_iters;
+                << " total:" << op_info[op_id].num_iters << " ops";
             op_info[op_id].num_iters = 0;
         }
 
@@ -1134,7 +1135,8 @@ private:
 private:
     std::vector<server_info_t>              _server_info;
     std::vector<int>                        _active_servers;
-    std::map<const UcxConnection*, int>     _conn_idx;
+    std::map<const UcxConnection*, size_t>  _server_index_lookup;
+    double                                  _prev_connect_time;
     long                                    _num_sent;
     long                                    _num_completed;
     status_t                                _status;
