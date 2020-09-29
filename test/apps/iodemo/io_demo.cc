@@ -711,10 +711,9 @@ public:
         return _conn_idx[conn];
     }
 
-    size_t do_io_read(int server_index, uint32_t sn) {
-        server_info_t& server_info = _server_info[server_index];
-        size_t data_size           = get_data_size();
-        IoMessage *m               = _io_msg_pool.get();
+    size_t do_io_read(server_info_t& server_info, uint32_t sn) {
+        size_t data_size = get_data_size();
+        IoMessage *m     = _io_msg_pool.get();
 
         m->init(IO_READ, sn, data_size, opts().validate);
         if (!send_io_message(server_info.conn, m)) {
@@ -737,9 +736,8 @@ public:
         return data_size;
     }
 
-    size_t do_io_write(int server_index, uint32_t sn) {
-        server_info_t& server_info = _server_info[server_index];
-        size_t data_size           = get_data_size();
+    size_t do_io_write(server_info_t& server_info, uint32_t sn) {
+        size_t data_size = get_data_size();
 
         if (!send_io_message(server_info.conn, IO_WRITE, sn, data_size)) {
             return 0;
@@ -997,10 +995,10 @@ public:
             size_t size;
             switch (op) {
             case IO_READ:
-                size = do_io_read(server_index, sn);
+                size = do_io_read(_server_info[server_index], sn);
                 break;
             case IO_WRITE:
-                size = do_io_write(server_index, sn);
+                size = do_io_write(_server_info[server_index], sn);
                 break;
             default:
                 abort();
@@ -1042,6 +1040,8 @@ public:
             delete _server_info[server_index].conn;
             _server_info[server_index].conn = NULL;
         }
+        _conn_idx.clear();
+        _active_servers.clear();
 
         return _status;
     }
@@ -1118,10 +1118,10 @@ private:
                         server_info.num_completed[op_id];
             }
 
-            // Report delta of min/max/total for every connection
+            // Report delta of min/max/total operations for every connection
             log << " min:" << delta_min << " max:" << delta_max
-                << " total:" <<op_info[op_id].num_iters;
-            op_info[op_id].num_iters   = 0;
+                << " total:" << op_info[op_id].num_iters;
+            op_info[op_id].num_iters = 0;
         }
 
         log << ", active: " << _active_servers.size();
