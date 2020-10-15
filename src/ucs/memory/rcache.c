@@ -19,6 +19,7 @@
 #include <ucs/sys/sys.h>
 #include <ucs/type/spinlock.h>
 #include <ucm/api/ucm.h>
+#include <ucs/time/time.h>
 
 #include "rcache.h"
 #include "rcache_int.h"
@@ -504,12 +505,15 @@ retry:
          */
         goto out_unlock;
     }
+    ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
 
     /* Allocate structure for new region */
     error = ucs_posix_memalign((void **)&region,
                                ucs_max(sizeof(void *), UCS_PGT_ENTRY_MIN_ALIGN),
                                rcache->params.region_struct_size,
                                "rcache_region");
+    ucs_error("ucs_posix_memalign took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
     if (error != 0) {
         ucs_error("failed to allocate rcache region descriptor: %m");
         status = UCS_ERR_NO_MEMORY;
@@ -536,10 +540,13 @@ retry:
     region->prot     = prot;
     region->flags    = UCS_RCACHE_REGION_FLAG_PGTABLE;
     region->refcount = 1;
+    ucs_time_t UCS_V_UNUSED t1 = ucs_get_time();
     region->status = status =
         UCS_PROFILE_NAMED_CALL("mem_reg", rcache->params.ops->mem_reg,
                                rcache->params.context, rcache, arg, region,
                                merged ? UCS_RCACHE_MEM_REG_HIDE_ERRORS : 0);
+    ucs_error("mem_reg took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t1), (unsigned int)length);
     if (status != UCS_OK) {
         if (merged) {
             /* failure may be due to merge, because memory of the merged

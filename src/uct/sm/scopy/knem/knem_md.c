@@ -15,6 +15,7 @@
 #include <ucs/arch/cpu.h>
 #include <ucs/debug/log.h>
 #include <ucs/sys/sys.h>
+#include <ucs/time/time.h>
 #include <ucm/api/ucm.h>
 
 
@@ -109,6 +110,7 @@ static ucs_status_t uct_knem_mem_reg_internal(uct_md_h md, void *address, size_t
     struct knem_cmd_param_iovec knem_iov[1];
     uct_knem_md_t *knem_md = (uct_knem_md_t *)md;
     int knem_fd = knem_md->knem_fd;
+    
 
     ucs_assert_always(knem_fd > -1);
 
@@ -120,8 +122,11 @@ static ucs_status_t uct_knem_mem_reg_internal(uct_md_h md, void *address, size_t
     create.iovec_nr = 1;
     create.flags = 0;
     create.protection = PROT_READ | PROT_WRITE;
+    ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
 
     rc = ioctl(knem_fd, KNEM_CMD_CREATE_REGION, &create);
+        ucs_error("KNEM_CMD_CREATE_REGION took %f usec, %u\n",
+                  ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
     if (rc < 0) {
         if (!silent) {
             /* do not report error in silent mode: it called from rcache
@@ -135,6 +140,7 @@ static ucs_status_t uct_knem_mem_reg_internal(uct_md_h md, void *address, size_t
     ucs_assert_always(create.cookie != 0);
     key->cookie  = create.cookie;
     key->address = (uintptr_t)address;
+
 
     return UCS_OK;
 }
@@ -253,9 +259,12 @@ static ucs_status_t uct_knem_mem_rcache_reg(uct_md_h uct_md, void *address,
     uct_knem_md_t *md = ucs_derived_of(uct_md, uct_knem_md_t);
     ucs_rcache_region_t *rregion;
     ucs_status_t status;
+    ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
 
     status = ucs_rcache_get(md->rcache, address, length, PROT_READ|PROT_WRITE,
                             &flags, &rregion);
+    ucs_error("test took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
     if (status != UCS_OK) {
         return status;
     }

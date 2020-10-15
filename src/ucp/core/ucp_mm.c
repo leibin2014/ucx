@@ -91,6 +91,8 @@ ucs_status_t ucp_mem_rereg_mds(ucp_context_h context, ucp_md_map_t reg_md_map,
     memh_index      = 0;
     prev_memh_index = 0;
     ucs_for_each_bit(md_index, reg_md_map) {
+        ucs_error("md_index %u\n",
+              md_index);
         md_attr = &context->tl_mds[md_index].attr;
         if (*md_map_p & UCS_BIT(md_index)) {
             /* already registered, use previous memh */
@@ -111,9 +113,12 @@ ucs_status_t ucp_mem_rereg_mds(ucp_context_h context, ucp_md_map_t reg_md_map,
             } else {
                 ucs_assert(address && length);
 
+                //ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
                 /* MD supports registration, register new memh on it */
                 status = uct_md_mem_reg(context->tl_mds[md_index].md, address,
                         length, uct_flags, &uct_memh[memh_index]);
+                //ucs_error("uct_md_mem_reg took %f usec, %u\n",
+              //ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
             }
 
             if (status == UCS_OK) {

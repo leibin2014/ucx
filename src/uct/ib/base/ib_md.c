@@ -336,7 +336,7 @@ void *uct_ib_md_mem_handle_thread_func(void *arg)
     int mr_idx = 0;
     size_t size = 0;
     ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
-
+    printf("test......\n");
     while (ctx->len) {
         size = ucs_min(ctx->len, ctx->chunk);
         if (ctx->access != UCT_IB_MEM_DEREG) {
@@ -358,7 +358,7 @@ void *uct_ib_md_mem_handle_thread_func(void *arg)
         mr_idx++;
     }
 
-    ucs_trace("%s %p..%p took %f usec\n",
+    ucs_error("%s %p..%p took %f usec\n",
               (ctx->access == UCT_IB_MEM_DEREG) ? "dereg_mr" : "reg_mr",
               ctx->mr[0]->addr,
               UCS_PTR_BYTE_OFFSET(ctx->mr[mr_idx-1]->addr, size),
@@ -473,8 +473,11 @@ static ucs_status_t uct_ib_md_reg_mr(uct_ib_md_t *md, void *address,
 
     if (length >= md->config.min_mt_reg) {
         UCS_PROFILE_CODE("reg ksm") {
+            ucs_time_t UCS_V_UNUSED t1 = ucs_get_time();
             status = md->ops->reg_multithreaded(md, address, length,
                                                 access_flags, memh);
+            ucs_error("test1 took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t1), (unsigned int)length);
         }
 
         if (status != UCS_ERR_UNSUPPORTED) {
@@ -488,8 +491,10 @@ static ucs_status_t uct_ib_md_reg_mr(uct_ib_md_t *md, void *address,
             return status;
         } /* if unsuported - fallback to regular registration */
     }
-
+    ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
     status = md->ops->reg_key(md, address, length, access_flags, memh);
+    ucs_error("test took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
     if (status != UCS_OK) {
         uct_ib_md_print_mem_reg_err_msg(level, address, length, access_flags);
         return status;
@@ -509,9 +514,16 @@ ucs_status_t uct_ib_reg_mr(struct ibv_pd *pd, void *addr, size_t length,
     in.addr       = addr;
     in.length     = length;
     in.exp_access = access_flags;
+    ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
     mr = UCS_PROFILE_CALL(ibv_exp_reg_mr, &in);
+     ucs_error("ibv_exp_reg_mr took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
 #else
+    ucs_time_t UCS_V_UNUSED t0 = ucs_get_time();
+
     mr = UCS_PROFILE_CALL(ibv_reg_mr, pd, addr, length, access_flags);
+    ucs_error("ibv_reg_mr took %f usec, %u\n",
+              ucs_time_to_usec(ucs_get_time() - t0), (unsigned int)length);
 #endif
     if (mr == NULL) {
         return UCS_ERR_IO_ERROR;
