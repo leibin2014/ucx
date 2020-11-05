@@ -39,7 +39,7 @@
 #include <sys/mman.h>
 #include <fcntl.h>
 
-#define SIZE_1GB               (1024*1024*1024)
+#define SIZE_1GB               (32*1024)
 //#define TEST_STRING_LEN        (32*1024)
 #define TEST_STRING_LEN        SIZE_1GB
 #define DEFAULT_PORT           13337
@@ -57,6 +57,10 @@
 char* test_message           = NULL;
 ucp_mem_h     m_memh;
 static uint16_t server_port          = DEFAULT_PORT;
+
+#define MAX_REGION             2500
+void* buffer[MAX_REGION];
+ucp_mem_h     mh[MAX_REGION];
 
 
 
@@ -170,7 +174,9 @@ static int init_context(ucp_context_h *ucp_context, ucp_worker_h *ucp_worker)
     ucp_params_t ucp_params;
     ucs_status_t status;
     int ret = 0;
-
+    struct timeval start, end;
+    double cost;
+    
     memset(&ucp_params, 0, sizeof(ucp_params));
 
     /* UCP initialization */
@@ -187,29 +193,45 @@ static int init_context(ucp_context_h *ucp_context, ucp_worker_h *ucp_worker)
         ret = -1;
          return ret;;
     }
-
-    // init memory
-    ucp_mem_map_params_t mem_params;
-    memset(&mem_params, 0, sizeof(mem_params));
-    mem_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
-                        UCP_MEM_MAP_PARAM_FIELD_LENGTH |
-                        UCP_MEM_MAP_PARAM_FIELD_FLAGS;
-    mem_params.address = test_message;
-    mem_params.length = SIZE_1GB;
-    printf("Start timing...\n");
-struct timeval start, end;
-gettimeofday(&start, NULL);
-    status = ucp_mem_map(*ucp_context, &mem_params, &m_memh);
-gettimeofday(&end, NULL);
-double cost;
-cost = (double)((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec));
-    if (status != UCS_OK) {
-        fprintf(stderr, "failed to ucp_mem_map (%s)\n", ucs_status_string(status));
-        ret = -1;
-        goto err_cleanup;
+    for (int i=0; i<MAX_REGION; i++) {
+        // init memory
+        ucp_mem_map_params_t mem_params;
+        memset(&mem_params, 0, sizeof(mem_params));
+        mem_params.field_mask = UCP_MEM_MAP_PARAM_FIELD_ADDRESS |
+                            UCP_MEM_MAP_PARAM_FIELD_LENGTH |
+                            UCP_MEM_MAP_PARAM_FIELD_FLAGS;
+        mem_params.address = buffer[i];
+        mem_params.length = SIZE_1GB;
+        printf("Start timing...\n");
+        
+        gettimeofday(&start, NULL);
+        status = ucp_mem_map(*ucp_context, &mem_params, &mh[i]);
+        gettimeofday(&end, NULL);
+        
+        cost = (double)((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec));
+        if (status != UCS_OK) {
+            fprintf(stderr, "failed to ucp_mem_map (%s)\n", ucs_status_string(status));
+            ret = -1;
+            goto err_cleanup;
+        }
+        if (1)
+        printf("register cost %lf ms\n", cost / 1000.0);
     }
-printf("register 1g of 4KB page, cost %lf ms\n", cost / 1000.0);
-
+    gettimeofday(&start, NULL);
+    for (int i=0; i<MAX_REGION; i++) {       
+        ucp_mem_unmap(*ucp_context, mh[i]);        
+    }
+    gettimeofday(&end, NULL);
+    cost = (double)((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec));
+    printf("deregister cost %lf ms\n", cost / 1000.0);
+    gettimeofday(&start, NULL);
+    ucp_cleanup(*ucp_context);
+    gettimeofday(&end, NULL);
+    cost = (double)((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec));
+    printf("clean up cost %lf ms\n", cost / 1000.0);
+    munmap(test_message, SIZE_1GB);
+    
+    
     ret = init_worker(*ucp_context, ucp_worker);
     if (ret != 0) {
         goto err_cleanup;
@@ -229,22 +251,28 @@ int main(int argc, char **argv)
 {
 
     int ret;
-    sleep(40);
+    sleep(1);
     /* UCP objects */
     ucp_context_h ucp_context;
     ucp_worker_h  ucp_worker;
+    printf("test start\n");
     int fd = open(FILE_NAME, O_CREAT | O_RDWR, 0755);
     if (fd < 0) {
         perror("Open failed");
         exit(1);
     }
-    ftruncate(fd, SIZE_1GB);
+    printf("test start1\n");
+    //ftruncate(fd, SIZE_1GB);
     test_message = (char*)(mmap(ADDR, SIZE_1GB, PROTECTION, FLAGS, fd, 0));
-    
+    printf("test start2\n");
     if (test_message == MAP_FAILED) {
                 perror("mmap");
                 unlink(FILE_NAME);
                 exit(1);
+    }
+    for (int i=0; i<MAX_REGION; i++) {
+        buffer[i] = malloc(SIZE_1GB);
+        memset(buffer[i], 0x0f, SIZE_1GB);
     }
     printf("address is %p\n", test_message);
     int i=0;
@@ -274,7 +302,13 @@ int main(int argc, char **argv)
 //    }
 
     ucp_worker_destroy(ucp_worker);
+    struct timeval start, end;
+    gettimeofday(&start, NULL);
     ucp_mem_unmap(ucp_context, m_memh);
+    gettimeofday(&end, NULL);
+    double cost;
+    cost = (double)((end.tv_sec - start.tv_sec) * 1000000 + (end.tv_usec - start.tv_usec));
+    printf("deregister 1g of 4KB page, cost %lf ms\n", cost / 1000.0);
     ucp_cleanup(ucp_context);
     munmap(test_message, SIZE_1GB);
     close(fd);
