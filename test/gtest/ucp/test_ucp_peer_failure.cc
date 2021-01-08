@@ -464,6 +464,9 @@ public:
     test_ucp_peer_failure_keepalive() {
         m_sbuf.resize(1 * UCS_MBYTE);
         m_rbuf.resize(1 * UCS_MBYTE);
+
+        m_env.push_back(new ucs::scoped_setenv("UCX_TCP_KEEPIDLE", "inf"));
+        m_env.push_back(new ucs::scoped_setenv("UCX_UD_TIMEOUT", "3s"));
     }
 
     void init() {
@@ -481,7 +484,7 @@ public:
 };
 
 UCS_TEST_P(test_ucp_peer_failure_keepalive, kill_receiver,
-           "KEEPALIVE_TIMEOUT=0.3", "KEEPALIVE_NUM_EPS=inf") {
+           "KEEPALIVE_INTERVAL=0.3", "KEEPALIVE_NUM_EPS=inf") {
     /* TODO: wireup is not tested yet */
 
     scoped_log_handler err_handler(wrap_errors_logger);
