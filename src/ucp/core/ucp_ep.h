@@ -1,5 +1,5 @@
 /**
- * Copyright (C) Mellanox Technologies Ltd. 2001-2015.  ALL RIGHTS RESERVED.
+ * Copyright (C) Mellanox Technologies Ltd. 2001-2020.  ALL RIGHTS RESERVED.
  * Copyright (C) Los Alamos National Security, LLC. 2019 ALL RIGHTS RESERVED.
  *
  * See file LICENSE for terms.
@@ -60,8 +60,9 @@ enum {
     UCP_EP_FLAG_CLOSE_REQ_VALID        = UCS_BIT(11),/* close protocol is started and
                                                         close_req is valid */
     UCP_EP_FLAG_ERR_HANDLER_INVOKED    = UCS_BIT(12),/* error handler was called */
-    UCP_EP_FLAG_TEMPORARY              = UCS_BIT(13),/* the temporary EP which holds
-                                                        temporary wireup configuration */
+    UCP_EP_FLAG_INTERNAL               = UCS_BIT(13),/* the internal EP which holds
+                                                        temporary wireup configuration or
+                                                        mem-type EP */
     UCP_EP_FLAG_INDIRECT_ID            = UCS_BIT(14),/* protocols on this endpoint will send
                                                         indirect endpoint id instead of pointer,
                                                         can be replaced with looking at local ID */
@@ -336,7 +337,7 @@ struct ucp_ep_config {
         const ucp_request_send_proto_t   *reply_proto;
 
         /* Maximal size for eager short */
-        ssize_t                          max_eager_short;
+        ucp_memtype_thresh_t             max_eager_short;
     } am_u;
 
     /* Protocol selection data */
@@ -350,6 +351,8 @@ struct ucp_ep_config {
 typedef struct ucp_ep {
     ucp_worker_h                  worker;        /* Worker this endpoint belongs to */
 
+    uint8_t                       ref_cnt;       /* Reference counter: 0 - it is
+                                                    allowed to destroy EP */
     ucp_worker_cfg_index_t        cfg_index;     /* Configuration index */
     ucp_ep_match_conn_sn_t        conn_sn;       /* Sequence number for remote connection */
     ucp_lane_index_t              am_lane;       /* Cached value */
@@ -505,8 +508,6 @@ void ucp_ep_destroy_base(ucp_ep_h ep);
 ucs_status_t ucp_worker_create_ep(ucp_worker_h worker, unsigned ep_init_flags,
                                   const char *peer_name, const char *message,
                                   ucp_ep_h *ep_p);
-
-void ucp_ep_delete(ucp_ep_h ep);
 
 ucs_status_t ucp_ep_init_create_wireup(ucp_ep_h ep, unsigned ep_init_flags,
                                        ucp_wireup_ep_t **wireup_ep);
