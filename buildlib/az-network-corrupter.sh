@@ -14,7 +14,6 @@ manager_script=/hpc/noarch/git_projects/swx_infrastructure/clusters/bin/manage_h
 if [ "x$reset" = "xyes" ]; then
     echo "Resetting interface on $(hostname)..."
     ${manager_script} "$(hostname)" "bond-up"
-    sleep "$uptime"
     exit $?
 fi
 

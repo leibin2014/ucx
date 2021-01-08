@@ -54,19 +54,6 @@ static inline void ucs_ptr_map_destroy(ucs_ptr_map_t *map)
 }
 
 /**
- * Returns whether the key is indirect or not.
- *
- * @param [in]  key     Key to object pointer.
- *
- * @return 0 - direct, otherside - indirect.
- */
-static UCS_F_ALWAYS_INLINE int
-ucs_ptr_map_key_indirect(ucs_ptr_map_key_t key)
-{
-    return key & UCS_PTR_MAP_KEY_INDIRECT_FLAG;
-}
-
-/**
  * Put a pointer into the map.
  *
  * @param [in]  map       Container.
@@ -92,7 +79,6 @@ ucs_ptr_map_put(ucs_ptr_map_t *map, void *ptr, int indirect,
     if (ucs_likely(!indirect)) {
         *key = (uintptr_t)ptr;
         ucs_assert(!(*key & UCS_PTR_MAP_KEY_MIN_ALIGN));
-        ucs_assert(*key != 0);
         return UCS_OK;
     }
 
@@ -122,7 +108,7 @@ ucs_ptr_map_get(const ucs_ptr_map_t *map, ucs_ptr_map_key_t key)
 {
     khiter_t iter;
 
-    if (ucs_likely(!ucs_ptr_map_key_indirect(key))) {
+    if (ucs_likely(!(key & UCS_PTR_MAP_KEY_INDIRECT_FLAG))) {
         return (void*)key;
     }
 
@@ -144,8 +130,7 @@ ucs_ptr_map_extract(ucs_ptr_map_t *map, ucs_ptr_map_key_t key)
     khiter_t iter;
     void *value;
 
-    if (ucs_likely(!ucs_ptr_map_key_indirect(key))) {
-        ucs_assert(key != 0);
+    if (ucs_likely(!(key & UCS_PTR_MAP_KEY_INDIRECT_FLAG))) {
         return (void*)key;
     }
 

@@ -552,8 +552,7 @@ UCT_INSTANTIATE_TEST_CASE(uct_flush_test)
 
 class uct_cancel_test : public uct_test {
 public:
-    static const size_t BUF_SIZE    = 8 * 1024;
-    static const size_t BUF_SIZE_DC = 1 * 1024;
+    static const size_t BUF_SIZE = 8 * 1024;
 
     class peer {
     public:
@@ -570,8 +569,6 @@ public:
         }
 
         void connect() {
-            m_e->destroy_eps();
-            m_peer->m_e->destroy_eps();
             m_e->connect(0, *m_peer->m_e, 0);
             m_peer->m_e->connect(0, *m_e, 0);
         }
@@ -610,10 +607,6 @@ public:
         size_t header_length = 0;
         uct_iov_t iov;
 
-        if (has_transport("dc_mlx5")) {
-            size = ucs_min(BUF_SIZE_DC, size);
-        }
-
         iov.buffer = (char*)sendbuf.ptr() + header_length;
         iov.count  = 1;
         iov.length = size - header_length;
@@ -626,10 +619,6 @@ public:
         size_t size = ucs_min(BUF_SIZE, s->m_e->iface_attr().cap.get.max_zcopy);
         mapped_buffer &sendbuf = *s->m_buf;
         mapped_buffer &recvbuf = *s->m_peer->m_buf;
-
-        if (has_transport("dc_mlx5")) {
-            size = ucs_min(BUF_SIZE_DC, size);
-        }
 
         UCS_TEST_GET_BUFFER_IOV(iov, iovcnt, sendbuf.ptr(), size,
                                 sendbuf.memh(), s->m_e->iface_attr().cap.get.max_iov);
@@ -658,7 +647,7 @@ public:
         done.count  = flushing.size() + 1;
         done.status = UCS_OK;
         done.func   = NULL;
-        ucs_time_t loop_end_limit = ucs_get_time() + ucs_time_from_sec(200.0);
+        ucs_time_t loop_end_limit = ucs_get_time() + ucs_time_from_sec(50.0);
         while (!flushing.empty() && (ucs_get_time() < loop_end_limit)) {
             std::list<entity *>::iterator iter = flushing.begin();
             while (iter != flushing.end()) {
@@ -677,17 +666,14 @@ public:
             short_progress_loop();
         }
         ASSERT_UCS_OK_OR_INPROGRESS(status);
-        double holdup = 200.0 - ucs_time_to_sec(loop_end_limit - ucs_get_time());
-        if (holdup > 10.0) {
-            UCS_TEST_MESSAGE << "flush took " << holdup << " sec";
-        }
 
         /* coverity[loop_condition] */
         while (done.count != 1) {
             progress();
         }
 
-        m_s0->connect();
+        m_s1->m_e->destroy_eps();
+        m_s1->m_e->connect(0, *m_s0->m_e, 0);
 
         /* there is a chance that one side getting disconect error before
          * calling flush(CANCEL) */
@@ -721,8 +707,7 @@ public:
     }
 
     void do_test(send_func_t send) {
-        ucs_time_t loop_end_limit = ucs_get_time() + ucs_time_from_sec(300.0);
-        for (int i = 0; (i < count()) && (ucs_get_time() < loop_end_limit); ++i) {
+        for (int i = 0; i < count(); ++i) {
             fill(send);
             flush_and_reconnect();
         }
@@ -779,9 +764,9 @@ protected:
     }
 
     void check_skip_test_tl() {
-        if ((GetParam()->tl_name != "dc_mlx5") &&
-            (GetParam()->tl_name != "rc_verbs") &&
-            (GetParam()->tl_name != "rc_mlx5")) {
+        const resource *r = dynamic_cast<const resource*>(GetParam());
+
+        if ((r->tl_name != "rc_mlx5") && (r->tl_name != "rc_verbs")) {
             UCS_TEST_SKIP_R("not supported yet");
         }
 
