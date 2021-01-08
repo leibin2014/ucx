@@ -37,7 +37,6 @@ typedef enum ucm_event_type {
     UCM_EVENT_SHMDT           = UCS_BIT(4),
     UCM_EVENT_SBRK            = UCS_BIT(5),
     UCM_EVENT_MADVISE         = UCS_BIT(6),
-    UCM_EVENT_BRK             = UCS_BIT(7),
 
     /* Aggregate events */
     UCM_EVENT_VM_MAPPED       = UCS_BIT(16),
@@ -163,15 +162,6 @@ typedef union ucm_event {
     } madvise;
 
     /*
-     * UCM_EVENT_BRK
-     * brk() is called.
-     */
-    struct {
-        int                result;
-        void               *addr;
-    } brk;
-
-    /*
      * UCM_EVENT_VM_MAPPED, UCM_EVENT_VM_UNMAPPED
      *
      * This is a "read-only" event which is called whenever memory is mapped
@@ -213,7 +203,7 @@ typedef struct ucm_global_config {
     ucm_mmap_hook_mode_t mmap_hook_mode;              /* MMAP hook mode */
     int                  enable_malloc_hooks;         /* Enable installing malloc hooks */
     int                  enable_malloc_reloc;         /* Enable installing malloc relocations */
-    ucm_mmap_hook_mode_t cuda_hook_mode;              /* Cuda hooks mode */
+    int                  enable_cuda_reloc;           /* Enable installing CUDA relocations */
     int                  enable_dynamic_mmap_thresh;  /* Enable adaptive mmap threshold */
     size_t               alloc_alignment;             /* Alignment for memory allocations */
     int                  dlopen_process_rpath;        /* Process RPATH section in dlopen hook */
@@ -221,10 +211,7 @@ typedef struct ucm_global_config {
 } ucm_global_config_t;
 
 
-/*
- * Global UCM configuration to be set externally.
- * @deprecated replaced by @ref ucm_library_init.
- */
+/* Global UCM configuration */
 extern ucm_global_config_t ucm_global_opts;
 
 
@@ -264,17 +251,6 @@ extern ucm_global_config_t ucm_global_opts;
  */
 typedef void (*ucm_event_callback_t)(ucm_event_type_t event_type,
                                      ucm_event_t *event, void *arg);
-
-
-/**
- * Initialize UCM library and set its configuration.
- *
- * @param [in]  ucm_opts   UCM library global configuration. If NULL, default
- *                         configuration is applied.
- *
- * @note Calling this function more than once in the same process has no effect.
- */
-void ucm_library_init(const ucm_global_config_t *ucm_opts);
 
 
 /**

@@ -59,10 +59,12 @@
  */
 #define BR(_reg) ((0xd61f << 16) + ((_reg) << 5))
 
-ucs_status_t ucm_bistro_patch(void *func_ptr, void *hook, const char *symbol,
-                              void **orig_func_p,
+ucs_status_t ucm_bistro_patch(const char *symbol, void *hook,
                               ucm_bistro_restore_point_t **rp)
 {
+    void *func;
+    ucs_status_t status;
+
     ucm_bistro_patch_t patch = {
         .reg3 = MOVZ(R15, 3, (uintptr_t)hook >> 48),
         .reg2 = MOVK(R15, 2, (uintptr_t)hook >> 32),
@@ -70,18 +72,15 @@ ucs_status_t ucm_bistro_patch(void *func_ptr, void *hook, const char *symbol,
         .reg0 = MOVK(R15, 0, (uintptr_t)hook),
         .br   = BR(R15)
     };
-    ucs_status_t status;
 
-    if (orig_func_p != NULL) {
-        return UCS_ERR_UNSUPPORTED;
-    }
+    UCM_LOOKUP_SYMBOL(func, symbol);
 
-    status = ucm_bistro_create_restore_point(func_ptr, sizeof(patch), rp);
+    status = ucm_bistro_create_restore_point(func, sizeof(patch), rp);
     if (UCS_STATUS_IS_ERR(status)) {
         return status;
     }
 
-    return ucm_bistro_apply_patch(func_ptr, &patch, sizeof(patch));
+    return ucm_bistro_apply_patch(func, &patch, sizeof(patch));
 }
 
 #endif

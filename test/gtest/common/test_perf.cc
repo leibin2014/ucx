@@ -18,11 +18,6 @@ extern "C" {
 #include <vector>
 
 
-#define UCP_ARM_PERF_TEST_MULTIPLIER  2
-#define UCT_ARM_PERF_TEST_MULTIPLIER 15
-#define UCT_PERF_TEST_MULTIPLIER      5
-
-
 test_perf::rte_comm::rte_comm() {
     pthread_mutex_init(&m_mutex, NULL);
 }
@@ -257,8 +252,9 @@ test_perf::test_result test_perf::run_multi_threaded(const test_spec &test, unsi
     return result;
 }
 
-double test_perf::run_test(const test_spec& test, unsigned flags, bool check_perf,
-                           const std::string &tl_name, const std::string &dev_name)
+void test_perf::run_test(const test_spec& test, unsigned flags, bool check_perf,
+                         const std::string &tl_name, const std::string &dev_name,
+                         double *perf_value)
 {
     std::vector<int> cpus = get_affinity();
     if (cpus.size() < 2) {
@@ -276,7 +272,7 @@ double test_perf::run_test(const test_spec& test, unsigned flags, bool check_per
         if ((result.status == UCS_ERR_UNSUPPORTED) ||
             (result.status == UCS_ERR_UNREACHABLE))
         {
-            return 0.0; /* Skipped */
+            return; /* Skipped */
         }
 
         ASSERT_UCS_OK(result.status);
@@ -296,17 +292,20 @@ double test_perf::run_test(const test_spec& test, unsigned flags, bool check_per
             UCS_TEST_MESSAGE << result_str << " (attempt " << i << ")";
         }
 
+        if (perf_value != NULL) {
+            *perf_value = value;
+        }
+
         if (!check_perf) {
-            return value; /* Skip */
+            return; /* Skip */
         } else if ((value >= test.min) && (value <= test.max)) {
-            return value; /* Success */
+            return; /* Success */
         } else {
             ucs::safe_sleep(ucs::perf_retry_interval);
         }
     }
 
-    ADD_FAILURE() << "Invalid " << test.title << " performance, expected: "
-                  << std::setprecision(3) << test.min << ".." << test.max;
-
-    return 0.0;
+     ADD_FAILURE() << "Invalid " << test.title << " performance, expected: " <<
+                      std::setprecision(3) << test.min << ".." << test.max;
 }
+

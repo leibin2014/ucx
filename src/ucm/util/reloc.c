@@ -8,6 +8,12 @@
 #  include "config.h"
 #endif
 
+#ifndef NVALGRIND
+#  include <valgrind/memcheck.h>
+#else
+#  define RUNNING_ON_VALGRIND 0
+#endif
+
 #include "reloc.h"
 
 #include <ucm/util/khash_safe.h>

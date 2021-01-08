@@ -88,6 +88,3 @@ GTAGS
 *.swp
 compile_commands.json
 .idea/
-.externalToolBuilders
-.classpath
-.vscode

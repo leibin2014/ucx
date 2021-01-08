@@ -49,9 +49,6 @@ protected:
                           const mapped_buffer &recvbuf,
                           uct_completion_t *comp);
 
-    ucs_status_t am_short_iov(const mapped_buffer &sendbuf,
-                              const mapped_buffer &recvbuf, uct_completion_t *comp);
-
     ucs_status_t am_zcopy(const mapped_buffer &sendbuf,
                           const mapped_buffer &recvbuf,
                           uct_completion_t *comp);

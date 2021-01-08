@@ -5,8 +5,6 @@
 # See file LICENSE for terms.
 #
 
-SUBDIRS = vfs/sock . vfs/fuse
-
 AUTOMAKE_OPTIONS    = nostdinc # avoid collision with built-in debug.h
 lib_LTLIBRARIES     = libucs.la
 bin_PROGRAMS        =
@@ -30,7 +28,6 @@ nobase_dist_libucs_la_HEADERS = \
 	config/types.h \
 	datastruct/array.h \
 	datastruct/array.inl \
-	datastruct/bitmap.h \
 	datastruct/callbackq.h \
 	datastruct/hlist.h \
 	datastruct/khash.h \
@@ -66,7 +63,6 @@ nobase_dist_libucs_la_HEADERS = \
 	type/status.h \
 	type/thread_mode.h \
 	type/cpu_set.h \
-	vfs/base/vfs_obj.h \
 	arch/atomic.h \
 	arch/x86_64/global_opts.h \
 	arch/x86_64/atomic.h \
@@ -169,8 +165,8 @@ libucs_la_SOURCES = \
 	time/timerq.c \
 	type/class.c \
 	type/status.c \
-	type/spinlock.c \
-	vfs/base/vfs_obj.c
+	type/init_once.c \
+	type/spinlock.c
 
 if HAVE_AARCH64_THUNDERX2
 libucs_la_SOURCES += \
