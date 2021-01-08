@@ -293,9 +293,3 @@
    ...
    fun:rdma_create_event_channel
 }
-{
-   rdmacm_bind_addr
-   Memcheck:Leak
-   ...
-   fun:rdma_bind_addr
-}

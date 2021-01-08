@@ -9,7 +9,6 @@
 #endif
 
 #include "cuda_md.h"
-#include "cuda_iface.h"
 
 #include <ucs/sys/module.h>
 #include <ucs/profile/profile.h>
@@ -18,8 +17,8 @@
 #include <cuda.h>
 
 
-ucs_status_t uct_cuda_base_get_sys_dev(CUdevice cuda_device,
-                                       ucs_sys_device_t *sys_dev_p)
+static ucs_status_t uct_cuda_base_get_sys_dev(CUdevice cuda_device,
+                                              ucs_sys_device_t *sys_dev_p)
 {
     ucs_sys_bus_id_t bus_id;
     CUresult cu_err;
