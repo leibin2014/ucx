@@ -65,14 +65,10 @@ public class UcxReadBWBenchmarkSender extends UcxBenchmark {
         } catch (ConnectException ignored) {
         } catch (Exception ex) {
             System.err.println(ex.getMessage());
-        }
-
-        try {
-            UcpRequest closeRequest = endpoint.closeNonBlockingForce();
-            resources.push(closeRequest);
-            worker.progressRequest(closeRequest);
-        } catch (Exception ignored) {
         } finally {
+            UcpRequest closeRequest = endpoint.closeNonBlockingForce();
+            worker.progressRequest(closeRequest);
+            resources.push(closeRequest);
             closeResources();
         }
     }

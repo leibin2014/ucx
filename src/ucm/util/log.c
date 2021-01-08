@@ -23,7 +23,6 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <syscall.h>
 
 #define UCM_LOG_BUG_SIZE   512
 
@@ -66,7 +65,7 @@ static char *ucm_log_ltoa(char *p, char *end, long n, int base, int flags,
                           int pad)
 {
     static const char digits[] = "0123456789abcdef";
-    long divider, top_divider;
+    long divider;
 
     if (((n < 0) || (flags & UCM_LOG_LTOA_FLAG_SIGN)) && (p < end)) {
         *(p++) = (n < 0 ) ? '-' : '+';
@@ -81,11 +80,9 @@ static char *ucm_log_ltoa(char *p, char *end, long n, int base, int flags,
 
     n = labs(n);
 
-    divider     = 1;
-    top_divider = 0;
-    while ((divider > 0) && ((n / divider) != 0)) {
-        top_divider = divider;
-        divider    *= base;
+    divider = 1;
+    while ((n / divider) != 0) {
+        divider *= base;
         --pad;
     }
 
@@ -94,7 +91,7 @@ static char *ucm_log_ltoa(char *p, char *end, long n, int base, int flags,
                                 (flags & UCM_LOG_LTOA_FLAG_PAD0) ? '0' : ' ');
     }
 
-    divider = top_divider;
+    divider /= base;
     while ((p < end) && (divider > 0)) {
         *(p++) = digits[(n / divider + base) % base];
         divider /= base;
@@ -263,15 +260,11 @@ void __ucm_log(const char *file, unsigned line, const char *function,
     va_list ap;
     struct timeval tv;
     ssize_t nwrite;
-    pid_t pid;
 
     gettimeofday(&tv, NULL);
-    pid = getpid();
-    ucm_log_snprintf(buf, UCM_LOG_BUG_SIZE - 1,
-                     "[%lu.%06lu] [%s:%d:%d] %18s:%-4d UCX  %s ",
-                     tv.tv_sec, tv.tv_usec, ucm_log_hostname, pid,
-                     ucm_get_tid() - pid, ucs_basename(file), line,
-                     ucm_log_level_names[level]);
+    ucm_log_snprintf(buf, UCM_LOG_BUG_SIZE - 1, "[%lu.%06lu] [%s:%d] %18s:%-4d UCX  %s ",
+                     tv.tv_sec, tv.tv_usec, ucm_log_hostname, getpid(),
+                     ucs_basename(file), line, ucm_log_level_names[level]);
     buf[UCM_LOG_BUG_SIZE - 1] = '\0';
 
     length = strlen(buf);

@@ -138,8 +138,7 @@ JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_putNonBlockingNative(JNIEnv *env, jclass cls,
                                                            jlong ep_ptr, jlong laddr,
                                                            jlong size, jlong raddr,
-                                                           jlong rkey_ptr, jobject callback,
-                                                           jint memory_type)
+                                                           jlong rkey_ptr, jobject callback)
 {
     ucs_status_ptr_t request = ucp_put_nb((ucp_ep_h)ep_ptr, (void *)laddr, size, raddr,
                                           (ucp_rkey_h)rkey_ptr, jucx_request_callback);
@@ -167,8 +166,7 @@ JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_getNonBlockingNative(JNIEnv *env, jclass cls,
                                                            jlong ep_ptr, jlong raddr,
                                                            jlong rkey_ptr, jlong laddr,
-                                                           jlong size, jobject callback,
-                                                           jint memory_type)
+                                                           jlong size, jobject callback)
 {
     ucs_status_ptr_t request = ucp_get_nb((ucp_ep_h)ep_ptr, (void *)laddr, size,
                                           raddr, (ucp_rkey_h)rkey_ptr, jucx_request_callback);
@@ -196,7 +194,7 @@ JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_sendTaggedNonBlockingNative(JNIEnv *env, jclass cls,
                                                                   jlong ep_ptr, jlong addr,
                                                                   jlong size, jlong tag,
-                                                                  jobject callback, jint memory_type)
+                                                                  jobject callback)
 {
     ucs_status_ptr_t request = ucp_tag_send_nb((ucp_ep_h)ep_ptr, (void *)addr, size,
                                                ucp_dt_make_contig(1), tag, jucx_request_callback);
@@ -210,7 +208,7 @@ JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_sendTaggedIovNonBlockingNative(JNIEnv *env, jclass cls,
                                                                     jlong ep_ptr, jlongArray addresses,
                                                                     jlongArray sizes, jlong tag,
-                                                                    jobject callback, jint memory_type)
+                                                                    jobject callback)
 {
     int iovcnt;
 
@@ -236,8 +234,7 @@ Java_org_openucx_jucx_ucp_UcpEndpoint_sendTaggedIovNonBlockingNative(JNIEnv *env
 JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_sendStreamNonBlockingNative(JNIEnv *env, jclass cls,
                                                                   jlong ep_ptr, jlong addr,
-                                                                  jlong size, jobject callback,
-                                                                  jint memory_type)
+                                                                  jlong size, jobject callback)
 {
     ucs_status_ptr_t request = ucp_stream_send_nb((ucp_ep_h)ep_ptr, (void *)addr, size,
                                                   ucp_dt_make_contig(1), jucx_request_callback, 0);
@@ -249,8 +246,8 @@ Java_org_openucx_jucx_ucp_UcpEndpoint_sendStreamNonBlockingNative(JNIEnv *env, j
 JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_sendStreamIovNonBlockingNative(JNIEnv *env, jclass cls,
                                                                      jlong ep_ptr, jlongArray addresses,
-                                                                     jlongArray sizes, jobject callback,
-                                                                     jint memory_type)
+                                                                     jlongArray sizes,
+                                                                     jobject callback)
 {
     int iovcnt;
 
@@ -277,7 +274,7 @@ JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_recvStreamNonBlockingNative(JNIEnv *env, jclass cls,
                                                                   jlong ep_ptr, jlong addr,
                                                                   jlong size, jlong flags,
-                                                                  jobject callback, jint memory_type)
+                                                                  jobject callback)
 {
     size_t rlength;
     ucs_status_ptr_t request = ucp_stream_recv_nb((ucp_ep_h)ep_ptr, (void *)addr, size,
@@ -298,8 +295,7 @@ JNIEXPORT jobject JNICALL
 Java_org_openucx_jucx_ucp_UcpEndpoint_recvStreamIovNonBlockingNative(JNIEnv *env, jclass cls,
                                                                      jlong ep_ptr,
                                                                      jlongArray addresses, jlongArray sizes,
-                                                                     jlong flags, jobject callback,
-                                                                     jint memory_type)
+                                                                     jlong flags, jobject callback)
 {
     size_t rlength;
 

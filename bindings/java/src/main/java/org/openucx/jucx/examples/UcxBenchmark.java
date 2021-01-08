@@ -92,7 +92,9 @@ public abstract class UcxBenchmark {
     }
 
     protected static double getBandwithGbits(long nanoTimeDelta, long size) {
-        return (double)size * 8.0 / nanoTimeDelta;
+        double sizeInGigabits = (double)size * 8.0 / 1e9;
+        double secondsElapsed = nanoTimeDelta / 1e9;
+        return sizeInGigabits / secondsElapsed;
     }
 
     protected static void closeResources() throws IOException {
