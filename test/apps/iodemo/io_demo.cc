@@ -249,15 +249,24 @@ protected:
     class Buffer {
     public:
         Buffer(size_t size, MemoryPool<Buffer, true>& pool) :
-            _capacity(size), _buffer(memalign(ALIGNMENT, size)), _size(0),
+            _capacity(size), _size(0),
             _pool(pool) {
-            if (_buffer == NULL) {
-                throw std::bad_alloc();
+            //if (_buffer == NULL) {
+            //    throw std::bad_alloc();
+            //}
+            if (size == 0) {
+                _buffer = &_buffer;
+            } else {
+                _buffer = memalign(ALIGNMENT, size);
             }
         }
 
         ~Buffer() {
-            free(_buffer);
+            if (_capacity == 0) {
+                //ucp_am_data_release(receiver().worker(), data_desc);
+            } else {
+                free(_buffer);
+            }
         }
 
         void release() {
@@ -269,6 +278,7 @@ protected:
         }
 
         inline void resize(size_t size) {
+            if (_capacity == 0) return;
             assert(size <= _capacity);
             _size = size;
         }
@@ -301,17 +311,23 @@ protected:
             assert(_iov.empty());
 
             Buffer *chunk = chunk_pool.get();
-            _iov.resize(get_chunk_cnt(data_size, chunk->_capacity));
+            if (chunk->_capacity != 0) {
+                _iov.resize(get_chunk_cnt(data_size, chunk->_capacity));
 
-            size_t remaining = init_chunk(0, chunk, data_size);
-            for (size_t i = 1; i < _iov.size(); ++i) {
-                remaining = init_chunk(i, chunk_pool.get(), remaining);
-            }
+                size_t remaining = init_chunk(0, chunk, data_size);
+                for (size_t i = 1; i < _iov.size(); ++i) {
+                    remaining = init_chunk(i, chunk_pool.get(), remaining);
+                }
 
-            assert(remaining == 0);
+                assert(remaining == 0);
 
-            if (validate) {
-                fill_data(sn);
+                if (validate) {
+                    fill_data(sn);
+                }
+            } else {
+                _iov.resize(1);
+                _iov[0] = chunk;
+                _iov[0]->resize(data_size);
             }
         }
 
@@ -462,7 +478,8 @@ protected:
         _data_buffers_pool(get_chunk_cnt(test_opts.max_data_size,
                                          test_opts.chunk_size), "data iovs"),
         _data_chunks_pool(test_opts.chunk_size, "data chunks",
-                          test_opts.num_offcache_buffers) {
+                          test_opts.num_offcache_buffers),
+        _empty_data_chunks_pool(0, "empty data chunks"){
     }
 
     const options_t& opts() const {
@@ -565,6 +582,7 @@ protected:
     MemoryPool<SendCompleteCallback> _send_callback_pool;
     MemoryPool<BufferIov>            _data_buffers_pool;
     MemoryPool<Buffer, true>         _data_chunks_pool;
+    MemoryPool<Buffer, true>         _empty_data_chunks_pool;
 };
 
 class DemoServer : public P2pDemoCommon {
@@ -613,6 +631,11 @@ public:
 
             _iov->release();
             _pool.put(this);
+        }
+
+        virtual void operator()(ucp_worker_h worker, void* data, ucs_status_t status) {
+            operator()(status);
+            ucp_am_data_release(worker, data);
         }
 
     private:
@@ -755,12 +778,19 @@ public:
         BufferIov *iov             = _data_buffers_pool.get();
         IoWriteResponseCallback *w = _callback_pool.get();
 
-        iov->init(msg->data_size, _data_chunks_pool, msg->sn, opts().validate);
+        if (!(data_desc._param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV)) {
+            iov->init(msg->data_size, _empty_data_chunks_pool, msg->sn, opts().validate);
+        } else {
+            iov->init(msg->data_size, _data_chunks_pool, msg->sn, opts().validate);
+        }
         w->init(this, conn, msg->sn, iov, &_curr_state.write_count);
 
         assert(iov->size() == 1);
 
         conn->recv_am_data((*iov)[0].buffer(), (*iov)[0].size(), data_desc, w);
+        if (!(data_desc._param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV)) {
+            set_persist_buf(true);
+        }
     }
 
     virtual void dispatch_connection_accepted(UcxConnection* conn) {
@@ -907,6 +937,11 @@ public:
 
             _iov->release();
             _pool.put(this);
+        }
+
+        virtual void operator()(ucp_worker_h worker, void* data, ucs_status_t status) {
+            operator()(status);
+            ucp_am_data_release(worker, data);
         }
 
         void* buffer() {
@@ -1139,6 +1174,9 @@ public:
             assert(iov->size() == 1);
 
             conn->recv_am_data((*iov)[0].buffer(), msg->data_size, data_desc, r);
+            if (!(data_desc._param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV)) {
+                set_persist_buf(true);
+            }
         }
     }
 

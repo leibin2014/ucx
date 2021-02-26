@@ -28,20 +28,13 @@ struct ucx_request {
     ucs_list_link_t              pos;
 };
 
-// Holds details of arrived AM message
-struct UcxAmDesc {
-    UcxAmDesc(void *data, const ucp_am_recv_param_t *param) :
-        _data(data), _param(param) {
-    }
-
-    void                         *_data;
-    const ucp_am_recv_param_t    *_param;
-};
-
 UcxCallback::~UcxCallback()
 {
 }
 
+void UcxCallback::operator()(ucp_worker_h worker, void* data, ucs_status_t status)
+{
+}
 void EmptyCallback::operator()(ucs_status_t status)
 {
 }
@@ -90,7 +83,7 @@ UcxLog::~UcxLog()
 UcxContext::UcxContext(size_t iomsg_size, double connect_timeout, bool use_am) :
     _context(NULL), _worker(NULL), _listener(NULL), _iomsg_recv_request(NULL),
     _iomsg_buffer(iomsg_size, '\0'), _connect_timeout(connect_timeout),
-    _use_am(use_am)
+    _use_am(use_am), _persist_buf(false)
 {
 }
 
@@ -193,6 +186,16 @@ void UcxContext::progress()
     progress_io_message();
     progress_conn_requests();
     progress_failed_connections();
+}
+
+void UcxContext::set_persist_buf(bool persist)
+{
+    _persist_buf = persist;
+}
+
+bool UcxContext::get_persist_buf()
+{
+    return _persist_buf;
 }
 
 uint32_t UcxContext::get_next_conn_id()
@@ -490,8 +493,15 @@ ucs_status_t UcxContext::am_recv_callback(void *arg, const void *header,
 
     UcxAmDesc data_desc(data, param);
 
-    self->dispatch_am_message(conn, header, header_length, data_desc);
 
+    self->dispatch_am_message(conn, header, header_length, data_desc);
+/*
+    if (self->get_persist_buf()) {
+        //UCX_LOG << "data length is " << length;
+        self->set_persist_buf(false);
+        return UCS_INPROGRESS;
+    }
+*/
     return UCS_OK;
 }
 
@@ -645,8 +655,10 @@ bool UcxConnection::recv_am_data(void *buffer, size_t length,
     assert(_ep != NULL);
 
     if (!(data_desc._param->recv_attr & UCP_AM_RECV_ATTR_FLAG_RNDV)) {
-        memcpy(buffer, data_desc._data, length);
+        //memcpy(buffer, data_desc._data, length);
+        //*(void**)buffer = data_desc._data;
         (*callback)(UCS_OK);
+        //(*callback)(_context.worker(), data_desc._data, UCS_OK);
         return true;
     }
 

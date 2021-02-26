@@ -22,7 +22,16 @@
 /* Forward declarations */
 class UcxConnection;
 struct ucx_request;
-struct UcxAmDesc;
+
+// Holds details of arrived AM message
+struct UcxAmDesc {
+    UcxAmDesc(void *data, const ucp_am_recv_param_t *param) :
+        _data(data), _param(param) {
+    }
+
+    void                         *_data;
+    const ucp_am_recv_param_t    *_param;
+};
 
 /*
  * UCX callback for send/receive completion
@@ -31,6 +40,7 @@ class UcxCallback {
 public:
     virtual ~UcxCallback();
     virtual void operator()(ucs_status_t status) = 0;
+    virtual void operator()(ucp_worker_h worker, void* data, ucs_status_t status);
 };
 
 
@@ -109,6 +119,10 @@ protected:
     // Called when new server connection is accepted
     virtual void dispatch_connection_accepted(UcxConnection* conn);
 
+    void set_persist_buf(bool persist);
+
+    bool get_persist_buf();
+
 private:
     typedef enum {
         WAIT_STATUS_OK,
@@ -184,6 +198,7 @@ private:
     std::string                    _iomsg_buffer;
     double                         _connect_timeout;
     bool                           _use_am;
+    bool                           _persist_buf;
 };
 
 
