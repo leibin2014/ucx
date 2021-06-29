@@ -4533,7 +4533,7 @@ typedef struct ucp_ep_attr {
 } ucp_ep_attr_t;
 
 
- /**
+/**
  * @ingroup UCP_WORKER
  * @brief Get attributes of a given endpoint.
  *
