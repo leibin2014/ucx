@@ -772,9 +772,9 @@ enum uct_cm_attr_field {
  * present, for backward compatibility support.
  */
 enum uct_ep_attr_field {
-    /** Enables @ref uct_ep_attr::local_sockaddr */
+    /** Enables @ref uct_ep_attr::local_address */
     UCT_EP_ATTR_FIELD_LOCAL_SOCKADDR  = UCS_BIT(0),
-    /** Enables @ref uct_ep_attr::remote_sockaddr */
+    /** Enables @ref uct_ep_attr::remote_address */
     UCT_EP_ATTR_FIELD_REMOTE_SOCKADDR = UCS_BIT(1)
 };
 
