@@ -2979,12 +2979,15 @@ ucs_status_t ucp_ep_query(ucp_ep_h ep, ucp_ep_attr_t *attr)
     if (attr->field_mask & UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR) {
         uct_cm_ep_attr.field_mask |= UCT_EP_ATTR_FIELD_REMOTE_SOCKADDR;
     }
-    
-    status = uct_ep_query(uct_cm_ep, &uct_cm_ep_attr);
-    if (status != UCS_OK) {
-        return status;
+
+    if ((attr->field_mask & UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR) ||
+        (attr->field_mask & UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR)) {    
+        status = uct_ep_query(uct_cm_ep, &uct_cm_ep_attr);
+        if (status != UCS_OK) {
+            return status;
+        }
     }
-    
+
     if (uct_cm_ep_attr.field_mask & UCT_EP_ATTR_FIELD_LOCAL_SOCKADDR) {
         ucp_sockaddr_copy_always((struct sockaddr *)&attr->local_sockaddr,
                                  (struct sockaddr *)&uct_cm_ep_attr.local_address);
