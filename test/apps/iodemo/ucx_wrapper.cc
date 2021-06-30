@@ -620,8 +620,6 @@ UcxConnection::UcxConnection(UcxContext &context, bool use_am) :
 
 UcxConnection::~UcxConnection()
 {
-    print_addresses();
-
     /* establish cb must be destroyed earlier since it accesses
      * the connection */
     assert(_establish_cb == NULL);
@@ -678,6 +676,8 @@ void UcxConnection::disconnect(UcxCallback *callback)
      * the connection */
     assert(_establish_cb == NULL);
     assert(_disconnect_cb == NULL);
+
+    print_addresses();
 
     UCX_CONN_LOG << "destroying, ep is " << _ep;
     ep_close(UCP_EP_CLOSE_MODE_FORCE);
@@ -890,6 +890,10 @@ void UcxConnection::print_addresses()
 {
     ucp_ep_attr_t ep_attr;
 
+    if (_ep == NULL) {
+        return;
+    }
+
     ep_attr.field_mask = UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR |
                          UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR;
 
@@ -1033,7 +1037,6 @@ void UcxConnection::handle_connection_error(ucs_status_t status)
     }
 
     UCX_CONN_LOG << "detected error: " << ucs_status_string(status);
-    print_addresses();
     _ucx_status = status;
 
     /* the upper layer should close the connection */

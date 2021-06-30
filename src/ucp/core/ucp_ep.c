@@ -89,6 +89,7 @@ static uct_iface_t ucp_failed_tl_iface = {
         .ep_pending_add      = (uct_ep_pending_add_func_t)ucs_empty_function_return_busy,
         .ep_pending_purge    = (uct_ep_pending_purge_func_t)ucs_empty_function_return_success,
         .ep_flush            = (uct_ep_flush_func_t)ucs_empty_function_return_ep_timeout,
+        .ep_query            = (uct_ep_query_func_t)ucs_empty_function_return_ep_timeout,
         .ep_fence            = (uct_ep_fence_func_t)ucs_empty_function_return_ep_timeout,
         .ep_check            = (uct_ep_check_func_t)ucs_empty_function_return_success,
         .ep_connect_to_ep    = (uct_ep_connect_to_ep_func_t)ucs_empty_function_return_ep_timeout,
