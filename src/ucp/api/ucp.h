@@ -4536,13 +4536,13 @@ typedef struct ucp_ep_attr {
 
 
 /**
- * @ingroup UCP_WORKER
+ * @ingroup UCP_ENDPOINT
  * @brief Get attributes of a given endpoint.
  *
  * This routine fetches information about the endpoint.
  *
- * @param [in]  ep         Endpoint object to query.
- * @param [out] attr       Filled with attributes of the endpoint.
+ * @param [in]  ep   Endpoint object to query.
+ * @param [out] attr Filled with attributes of the endpoint.
  *
  * @return Error code as defined by @ref ucs_status_t
  */

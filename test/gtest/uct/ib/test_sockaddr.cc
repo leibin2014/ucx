@@ -773,16 +773,15 @@ UCS_TEST_P(test_uct_sockaddr, listener_query)
 UCS_TEST_P(test_uct_sockaddr, ep_query)
 {
     listen_and_connect();
-    
+
     wait_for_bits(&m_state, TEST_STATE_SERVER_CONNECTED |
                             TEST_STATE_CLIENT_CONNECTED);
     EXPECT_TRUE(ucs_test_all_flags(m_state, (TEST_STATE_SERVER_CONNECTED |
                                              TEST_STATE_CLIENT_CONNECTED)));
+
     ep_query();
 
     cm_disconnect(m_client);
-
-
 }
 
 UCS_TEST_P(test_uct_sockaddr, cm_open_listen_close)

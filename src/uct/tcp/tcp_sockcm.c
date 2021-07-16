@@ -197,8 +197,9 @@ UCS_CLASS_INIT_FUNC(uct_tcp_sockcm_t, uct_component_h component,
                                                         uct_tcp_sockcm_config_t);
 
     UCS_CLASS_CALL_SUPER_INIT(uct_cm_t, &uct_tcp_sockcm_ops,
-                              &uct_tcp_sockcm_iface_ops, &uct_tcp_sockcm_iface_internal_ops, worker, component,
-                              config);
+                              &uct_tcp_sockcm_iface_ops,
+                              &uct_tcp_sockcm_iface_internal_ops,
+                              worker, component, config);
 
     self->priv_data_len  = cm_config->priv_data_len +
                                    sizeof(uct_tcp_sockcm_priv_data_hdr_t);
