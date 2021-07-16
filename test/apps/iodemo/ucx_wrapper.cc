@@ -884,31 +884,6 @@ void UcxConnection::set_log_prefix(const struct sockaddr* saddr,
     memcpy(_log_prefix, ss.str().c_str(), length);
 }
 
-void UcxConnection::print_addresses()
-{
-    ucp_ep_attr_t ep_attr;
-
-    if (_ep == NULL) {
-        return;
-    }
-
-    ep_attr.field_mask = UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR |
-                         UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR;
-    ucs_status_t status = ucp_ep_query(_ep, &ep_attr);
-    if (status != UCS_OK) {
-        UCX_CONN_LOG << "ucp_ep_query() failed: " << ucs_status_string(status);
-    }
-
-    UCX_CONN_LOG << "endpoint " << _ep << ", local address "
-                 << UcxContext::sockaddr_str(
-                                 (const struct sockaddr*)&ep_attr.local_sockaddr,
-                                 sizeof(ep_attr.local_sockaddr))
-                 << " remote address "
-                 << UcxContext::sockaddr_str(
-                                 (const struct sockaddr*)&ep_attr.remote_sockaddr,
-                                 sizeof(ep_attr.remote_sockaddr));
-}
-
 void UcxConnection::connect_tag(UcxCallback *callback)
 {
     const ucp_datatype_t dt_int = ucp_dt_make_contig(sizeof(uint32_t));
@@ -982,13 +957,33 @@ void UcxConnection::connect_common(ucp_ep_params_t &ep_params,
 
 void UcxConnection::established(ucs_status_t status)
 {
-    if (!_use_am && (status == UCS_OK)) {
-        assert(_remote_conn_id != 0);
-        UCX_CONN_LOG << "Remote id is " << _remote_conn_id;
-        print_addresses();
-    }
+    ucp_ep_attr_t ep_attr;
 
     _ucx_status = status;
+
+    if (!_use_am && (status == UCS_OK)) {
+        assert(_remote_conn_id != 0);
+
+        ep_attr.field_mask = UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR |
+                             UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR;
+        status = ucp_ep_query(_ep, &ep_attr);
+        if (status != UCS_OK) {
+            UCX_CONN_LOG << "Remote id is " << _remote_conn_id;
+            UCX_CONN_LOG << "ucp_ep_query() failed: "
+                         << ucs_status_string(status);
+        } else {
+            UCX_CONN_LOG << "Remote id is " << _remote_conn_id
+                         << ", endpoint " << _ep << ", local address "
+                         << UcxContext::sockaddr_str(
+                                (const struct sockaddr*)&ep_attr.local_sockaddr,
+                                sizeof(ep_attr.local_sockaddr))
+                         << " remote address "
+                         << UcxContext::sockaddr_str(
+                                (const struct sockaddr*)&ep_attr.remote_sockaddr,
+                                sizeof(ep_attr.remote_sockaddr));
+        }
+    }
+
     _context.remove_connection_inprogress(this);
     invoke_callback(_establish_cb, status);
 }
