@@ -346,7 +346,6 @@ typedef struct uct_iface_ops {
     uct_ep_connect_func_t               ep_connect;
     uct_ep_disconnect_func_t            ep_disconnect;
     uct_cm_ep_conn_notify_func_t        cm_ep_conn_notify;
-    uct_ep_query_func_t                 ep_query;
     uct_ep_destroy_func_t               ep_destroy;
     uct_ep_get_address_func_t           ep_get_address;
     uct_ep_connect_to_ep_func_t         ep_connect_to_ep;

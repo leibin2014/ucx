@@ -89,7 +89,6 @@ static uct_iface_t ucp_failed_tl_iface = {
         .ep_pending_add      = (uct_ep_pending_add_func_t)ucs_empty_function_return_busy,
         .ep_pending_purge    = (uct_ep_pending_purge_func_t)ucs_empty_function_return_success,
         .ep_flush            = (uct_ep_flush_func_t)ucs_empty_function_return_ep_timeout,
-        .ep_query            = (uct_ep_query_func_t)ucs_empty_function_return_ep_timeout,
         .ep_fence            = (uct_ep_fence_func_t)ucs_empty_function_return_ep_timeout,
         .ep_check            = (uct_ep_check_func_t)ucs_empty_function_return_success,
         .ep_connect_to_ep    = (uct_ep_connect_to_ep_func_t)ucs_empty_function_return_ep_timeout,
@@ -2949,26 +2948,13 @@ void ucp_ep_vfs_init(ucp_ep_h ep)
                             UCS_VFS_TYPE_STRING, "error_mode");
 }
 
-ucs_status_t ucp_ep_query(ucp_ep_h ep, ucp_ep_attr_t *attr)
+static ucs_status_t ucp_ep_query_sockaddr(ucp_ep_h ep, ucp_ep_attr_t *attr)
 {
     uct_ep_h uct_cm_ep = ucp_ep_get_cm_uct_ep(ep);
     uct_ep_attr_t uct_cm_ep_attr;
     ucs_status_t status;
 
-    if (attr->field_mask & UCP_EP_ATTR_FIELD_NAME) {
-#if ENABLE_DEBUG_DATA
-        ucs_strncpy_safe(attr->name, ep->name, UCP_ENTITY_NAME_MAX);
-#else
-        ucs_snprintf_zero(attr->name, UCP_ENTITY_NAME_MAX, "%p", ep);
-#endif
-    }
-
-    if (!(attr->field_mask & UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR) &&
-        !(attr->field_mask & UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR)) {
-        return UCS_OK;
-    }
-
-    if (uct_cm_ep == NULL) {
+    if (uct_cm_ep == NULL || ucp_is_uct_ep_failed(uct_cm_ep)) {
         ucs_debug("uct_cm_ep is NULL");
         return UCS_ERR_NOT_CONNECTED;
     }
@@ -2996,6 +2982,24 @@ ucs_status_t ucp_ep_query(ucp_ep_h ep, ucp_ep_attr_t *attr)
     if (uct_cm_ep_attr.field_mask & UCT_EP_ATTR_FIELD_REMOTE_SOCKADDR) {
         ucp_sockaddr_copy_always((struct sockaddr *)&attr->remote_sockaddr,
                                  (struct sockaddr *)&uct_cm_ep_attr.remote_address);
+    }
+
+    return UCS_OK;
+}
+
+ucs_status_t ucp_ep_query(ucp_ep_h ep, ucp_ep_attr_t *attr)
+{
+    if (attr->field_mask & UCP_EP_ATTR_FIELD_NAME) {
+#if ENABLE_DEBUG_DATA
+        ucs_strncpy_safe(attr->name, ep->name, UCP_ENTITY_NAME_MAX);
+#else
+        ucs_snprintf_zero(attr->name, UCP_ENTITY_NAME_MAX, "%p", ep);
+#endif
+    }
+
+    if (attr->field_mask &
+        (UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR | UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR)) {
+        return ucp_ep_query_sockaddr(ep, attr);
     }
 
     return UCS_OK;

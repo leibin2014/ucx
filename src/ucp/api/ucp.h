@@ -4522,12 +4522,14 @@ typedef struct ucp_ep_attr {
     char     name[UCP_ENTITY_NAME_MAX];
 
     /**
-     * The local sockaddr that this ep is using.
+     * Local socket address for this endpoint. Valid only for endpoints created 
+     * by connecting to a socket address.
      */
     struct sockaddr_storage local_sockaddr;
 
     /**
-     * The remote sockaddr this ep is connected to.
+     * Remote socket address this endpoint is connected to. Valid only for endpoints
+     * created by connecting to a socket address.
      */
     struct sockaddr_storage remote_sockaddr;
 } ucp_ep_attr_t;
@@ -4538,8 +4540,6 @@ typedef struct ucp_ep_attr {
  * @brief Get attributes of a given endpoint.
  *
  * This routine fetches information about the endpoint.
- * It should be called only if the endpoint was created with the
- * UCP_EP_PARAM_FIELD_SOCK_ADDR or UCP_EP_PARAM_FIELD_CONN_REQUEST flags.
  *
  * @param [in]  ep         Endpoint object to query.
  * @param [out] attr       Filled with attributes of the endpoint.

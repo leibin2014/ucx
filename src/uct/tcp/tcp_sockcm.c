@@ -128,6 +128,27 @@ void uct_tcp_sa_data_handler(int fd, ucs_event_set_types_t events, void *arg)
     }
 }
 
+ucs_status_t uct_tcp_sockcm_ep_query(uct_ep_h ep, uct_ep_attr_t *ep_attr)
+{
+    uct_tcp_sockcm_ep_t *cep = ucs_derived_of(ep, uct_tcp_sockcm_ep_t);
+    ucs_status_t status;
+    socklen_t local_addr_len;
+    socklen_t remote_addr_len;
+
+    status = ucs_socket_getname(cep->fd, &ep_attr->local_address, &local_addr_len);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    /* get the device address of the remote peer associated with the connected fd */
+    status = ucs_socket_getpeername(cep->fd, &ep_attr->remote_address, &remote_addr_len);
+    if (status != UCS_OK) {
+        return status;
+    }
+
+    return UCS_OK;
+}
+
 static uct_iface_ops_t uct_tcp_sockcm_iface_ops = {
     .ep_pending_purge         = (uct_ep_pending_purge_func_t)ucs_empty_function,
     .ep_connect               = uct_tcp_sockcm_ep_connect,
@@ -152,7 +173,6 @@ static uct_iface_ops_t uct_tcp_sockcm_iface_ops = {
     .ep_check                 = (uct_ep_check_func_t)ucs_empty_function_return_unsupported,
     .ep_create                = (uct_ep_create_func_t)ucs_empty_function_return_unsupported,
     .iface_flush              = (uct_iface_flush_func_t)ucs_empty_function_return_unsupported,
-    .ep_query                 = (uct_ep_query_func_t)ucs_empty_function_return_unsupported,
     .iface_fence              = (uct_iface_fence_func_t)ucs_empty_function_return_unsupported,
     .iface_progress_enable    = ucs_empty_function,
     .iface_progress_disable   = ucs_empty_function,
@@ -166,6 +186,10 @@ static uct_iface_ops_t uct_tcp_sockcm_iface_ops = {
     .iface_is_reachable       = (uct_iface_is_reachable_func_t)ucs_empty_function_return_zero
 };
 
+static uct_iface_internal_ops_t uct_tcp_sockcm_iface_internal_ops = {
+    .ep_query = uct_tcp_sockcm_ep_query,
+};
+
 UCS_CLASS_INIT_FUNC(uct_tcp_sockcm_t, uct_component_h component,
                     uct_worker_h worker, const uct_cm_config_t *config)
 {
@@ -173,7 +197,7 @@ UCS_CLASS_INIT_FUNC(uct_tcp_sockcm_t, uct_component_h component,
                                                         uct_tcp_sockcm_config_t);
 
     UCS_CLASS_CALL_SUPER_INIT(uct_cm_t, &uct_tcp_sockcm_ops,
-                              &uct_tcp_sockcm_iface_ops, worker, component,
+                              &uct_tcp_sockcm_iface_ops, &uct_tcp_sockcm_iface_internal_ops, worker, component,
                               config);
 
     self->priv_data_len  = cm_config->priv_data_len +

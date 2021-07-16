@@ -677,8 +677,6 @@ void UcxConnection::disconnect(UcxCallback *callback)
     assert(_establish_cb == NULL);
     assert(_disconnect_cb == NULL);
 
-    print_addresses();
-
     UCX_CONN_LOG << "destroying, ep is " << _ep;
     ep_close(UCP_EP_CLOSE_MODE_FORCE);
 
@@ -896,20 +894,19 @@ void UcxConnection::print_addresses()
 
     ep_attr.field_mask = UCP_EP_ATTR_FIELD_LOCAL_SOCKADDR |
                          UCP_EP_ATTR_FIELD_REMOTE_SOCKADDR;
-
     ucs_status_t status = ucp_ep_query(_ep, &ep_attr);
-    if (status == UCS_OK) {
-        UCX_CONN_LOG << "endpoint " << _ep << ", local address "
-                     << UcxContext::sockaddr_str(
-                                     (const struct sockaddr*)&ep_attr.local_sockaddr,
-                                     sizeof(ep_attr.local_sockaddr))
-                     << " remote address "
-                     << UcxContext::sockaddr_str(
-                                     (const struct sockaddr*)&ep_attr.remote_sockaddr,
-                                     sizeof(ep_attr.remote_sockaddr));
-    } else {
+    if (status != UCS_OK) {
         UCX_CONN_LOG << "ucp_ep_query() failed: " << ucs_status_string(status);
     }
+
+    UCX_CONN_LOG << "endpoint " << _ep << ", local address "
+                 << UcxContext::sockaddr_str(
+                                 (const struct sockaddr*)&ep_attr.local_sockaddr,
+                                 sizeof(ep_attr.local_sockaddr))
+                 << " remote address "
+                 << UcxContext::sockaddr_str(
+                                 (const struct sockaddr*)&ep_attr.remote_sockaddr,
+                                 sizeof(ep_attr.remote_sockaddr));
 }
 
 void UcxConnection::connect_tag(UcxCallback *callback)

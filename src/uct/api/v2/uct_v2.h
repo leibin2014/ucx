@@ -132,6 +132,21 @@ typedef enum {
 } uct_md_mem_dereg_field_mask_t;
 
 
+/**
+ * @ingroup UCT_RESOURCE
+ * @brief UCT endpoint attributes field mask.
+ *
+ * The enumeration allows specifying which fields in @ref uct_ep_attr_t are
+ * present, for backward compatibility support.
+ */
+enum uct_ep_attr_field {
+    /** Enables @ref uct_ep_attr::local_address */
+    UCT_EP_ATTR_FIELD_LOCAL_SOCKADDR  = UCS_BIT(0),
+    /** Enables @ref uct_ep_attr::remote_address */
+    UCT_EP_ATTR_FIELD_REMOTE_SOCKADDR = UCS_BIT(1)
+};
+
+
 typedef enum {
     /**
      * Invalidate the memory region. If this flag is set then memory region is
@@ -142,6 +157,30 @@ typedef enum {
      */
     UCT_MD_MEM_DEREG_FLAG_INVALIDATE = UCS_BIT(0) 
 } uct_md_mem_dereg_flags_t;
+
+
+/**
+ * @ingroup UCT_RESOURCE
+ * @brief Endpoint attributes, capabilities and limitations.
+ */
+struct uct_ep_attr {
+    /**
+     * Mask of valid fields in this structure, using bits from
+     * @ref uct_ep_attr_field. Fields not specified by this mask
+     * will be ignored.
+     */
+    uint64_t                field_mask;
+
+    /**
+     * Local sockaddr used by the endpoint.
+     */
+    struct sockaddr_storage local_address;
+
+    /**
+     * Remote sockaddr the endpoint is connected to.
+     */
+    struct sockaddr_storage remote_address;
+};
 
 
 /**
@@ -222,6 +261,21 @@ uct_iface_estimate_perf(uct_iface_h tl_iface, uct_perf_attr_t *perf_attr);
  */
 ucs_status_t uct_md_mem_dereg_v2(uct_md_h md,
                                  const uct_md_mem_dereg_params_t *params);
+
+
+/**
+ * @ingroup UCT_RESOURCE
+ * @brief Get ep's attributes.
+ *
+ * This routine should be called only if the endpoint was created with the
+ * UCT_EP_PARAM_FIELD_SOCKADDR or UCT_EP_PARAM_FIELD_CONN_REQUEST flags.
+ *
+ * @param [in]  ep         Endpoint to query.
+ * @param [out] ep_attr    Filled with endpoint attributes.
+ *
+ * @return Error code.
+ */
+ucs_status_t uct_ep_query(uct_ep_h ep, uct_ep_attr_t *ep_attr);
 
 END_C_DECLS
 
