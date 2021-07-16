@@ -236,7 +236,7 @@ protected:
         memset(&attr, 0, sizeof(attr));
         attr.field_mask = UCT_EP_ATTR_FIELD_LOCAL_SOCKADDR |
                           UCT_EP_ATTR_FIELD_REMOTE_SOCKADDR;
-        uct_ep_query(m_client->ep(index), &attr);
+        status = uct_ep_query(m_client->ep(index), &attr);
         ASSERT_UCS_OK(status);
 
         /* The ports are expected to be different. Ignore them. */
